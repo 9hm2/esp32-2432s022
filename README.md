@@ -140,6 +140,25 @@ alapján a következő csatlakozók/kezelőszervek vannak a kártyán:
   eltérhet — nagy töltőáram/extra terhelés előtt érdemes a saját paneleden
   ellenőrizni.
 
+**A `BAT` csatlakozó (P2) bekötése — kapcsolási rajz szerint:**
+- `P2` = **JST 1.25 mm, 2 tűs**: `BAT+` és `BAT−` (a `BAT−` a közös `GND`).
+  Egycellás (**1S**) Li-ion/LiPo, 3.0–4.2 V.
+- A `BAT+` egyszerre megy a power-bank IC **`BAT` lábára** és az **`L1`
+  induktoron** át a **`SW`/LX** csomópontra (boost-topológia); mellette `C24`/`C25`
+  decoupling. A `BAT−` = `GND`.
+- **Töltés:** USB-C 5 V jelenlétében az IC tölti a cellát (túltöltés-védelem).
+  **Kisütés:** USB nélkül az IC az akkuból 5 V-ot boostol a `VOUT`-ra → ez a
+  `VOUT-BAT` sín → két AMS1117-3.3 → 3.3 V (ESP32 + TFT). Tehát akkuról is megy.
+- A „Battery button switch" az IC **`KEY`** lábára megy (`R29`-en át `GND`-re).
+
+⚠️ **Akkus üzem buktatói (a power-bank IC-ből adódóan):**
+1. **Bekapcsolás akkuról:** USB nélkül a kimenet sokszor csak a **KEY gomb**
+   megnyomására indul el (normális power-bank-viselkedés).
+2. **Kis terhelésű auto-lekapcsolás:** az IP5306-osztályú IC-k a boost-kimenetet
+   **lekapcsolják, ha a fogyasztás ~45–50 mA alá esik**. ESP32 **deep sleep**
+   ennél kevesebbet húz, ezért a panel akkuról **magától kikapcsolhat** alvásban.
+   Akkus, alvó projektnél ezzel számolni kell.
+
 ### Szabad / kivezetett GPIO-k
 A board oldalsó csatlakozóin elérhető szabad lábak (a konkrét silk-screen a
 panel revíziójától függ): jellemzően **GPIO35** (csak bemenet), **GPIO34**
