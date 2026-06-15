@@ -31,6 +31,15 @@ dokumentációját.
 > **Variánsok:** `…S022C` = kapacitív touch (CST816S), `…S022N` = touch nélkül.
 > Ez a repó a **C (touch-os)** változatra van konfigurálva.
 
+> **Márkajelzés (GUITION):** ezt a panelt több gyártó/forgalmazó is árulja —
+> Sunton (`ESP32-2432S022C`), **Guition** (silkscreen jellemzően `JC2432W022C`),
+> DIYmalls stb. Ezek **elektromosan ugyanaz a kialakítás**, ezért a
+> `board = esp32-2432S022C` definíció és az itteni kód **mindegyikre jó**,
+> kódmódosítás nélkül. Egy ismert apró revíziós különbség: néhány **GUITION**-jelű
+> darabon a külső I2C/bővítő csatlakozó (**CN1**) 3-as lába **nincs bekötve**
+> a GPIO22-re (SCL) — emiatt csak a *külső* I2C-eszközöket érintheti, a fedélzeti
+> CST816S touch a belső buszon ettől függetlenül működik.
+
 ### Fontos eltérés a „klasszikus" CYD-től (2432S028R)
 A 2.8"-os CYD (`2432S028R`) ILI9341 kijelzőt **SPI**-n és XPT2046 **rezisztív**
 touch-ot használ. A **2.2"-os 022C ezzel szemben**:
