@@ -24,8 +24,9 @@ dokumentációját.
 | Érintő | **CST816S** kapacitív, I2C (a „C" variáns) |
 | Tároló | microSD foglalat (SPI) |
 | Hang | beépített hangszóró-kimenet (GPIO26) |
-| USB | CH340 USB-UART híd, micro-USB |
-| Tápfeszültség | 5 V (USB) |
+| USB | CH340 USB-UART híd, **USB Type-C** |
+| Tápfeszültség | 5 V (USB Type-C), kb. 100 mA |
+| Akkumulátor | 1 cellás Li-ion/LiPo csatlakozó **töltéssel + védelemmel** (lásd 2. szakasz) |
 
 > **Variánsok:** `…S022C` = kapacitív touch (CST816S), `…S022N` = touch nélkül.
 > Ez a repó a **C (touch-os)** változatra van konfigurálva.
@@ -91,27 +92,34 @@ Pixel órajel: 12 MHz. Színmélység: 16 bit (RGB565).
 | Hangszóró kimenet | **26** |
 
 ### Fizikai csatlakozók és tápellátás
-A panelen lévő JST 1.25 mm-es portok (a DIYmalls/Sunton dokumentáció szerint):
+A hivatalos Sunton (Shenzhen Jingcai) termékspecifikáció és a panel fotója
+alapján a következő csatlakozók/kezelőszervek vannak a kártyán:
 
-| Jelölés | Típus | Funkció |
+| Jelölés a panelen | Típus | Funkció |
 |---|---|---|
-| micro-USB | USB | Tápellátás + programozás (CH340 USB-UART) |
-| **P1** | 1.25 mm **4 tűs** | Kiegészítő tápcsatlakozó (be/ki vezetett táp – pl. 5V/3V3/GND) |
-| **P2** | 1.25 mm **2 tűs** | **Akkumulátor-csatlakozó** (1 cellás Li-ion/LiPo) + külön **akku kapcsoló** |
-| **P3** | 1.25 mm **2 tűs** | Hangszóró (GPIO26) |
-| BOOT / RESET | nyomógomb | Bootloader mód / újraindítás |
+| **type-C** | USB Type-C | Tápellátás (5 V) + programozás (CH340 USB-UART) + akkutöltés |
+| **Battery interface** | JST 1.25 mm **2 tűs** | **Akkumulátor-csatlakozó** (1 cellás Li-ion/LiPo, BAT+/GND) |
+| **Battery button switch** | kapcsoló | Az **akku tápjának** be-/kikapcsolása |
+| **4P 1.25 Power supply base** | JST 1.25 mm **4 tűs** | Táp + soros port (jellemzően **Vin(5V) / GND / TXD / RXD**) |
+| **Speak** | JST 1.25 mm **2 tűs** | Hangszóró (GPIO26-on keresztül, audio erősítővel) |
+| **TF** | microSD foglalat | SPI (CS=5, MOSI=23, SCLK=18, MISO=19) |
+| **RESET / BOOT** | nyomógomb | Újraindítás / bootloader mód (egykattintásos feltöltés) |
 
-**Az akkumulátorról fontos tudni:**
-- Van **2 tűs akkucsatlakozó (P2)** és egy hozzá tartozó **kapcsoló**, amivel az
-  akku tápja be-/kikapcsolható. Ez fizikai tápbemenet, **nem GPIO** — ezért nincs
-  is rá láb a board-definícióban (a korábbi pinout csak a GPIO-kat listázta).
-- **Töltőáramkör (charge IC) tudtommal nincs a panelen** és **nincs gyári
-  akkufeszültség-mérés** sem dedikált ADC osztón keresztül (a smartdisplay
-  board-definíció nem deklarál `VBAT`/akku ADC lábat). Vagyis az akkut külön
-  töltővel kell tölteni, és ha állapotjelzést szeretnél, magadnak kell egy
-  feszültségosztót egy szabad ADC1 lábra (pl. GPIO35/GPIO34, csak bemenet) kötni.
-- Ezt érdemes a saját paneleden multiméterrel/ránézéssel ellenőrizni, mert a
-  Sunton revíziók eltérhetnek.
+**Az akkumulátorról — a gyártói specifikáció szerint (korrigált infó):**
+- Van **2 tűs akkucsatlakozó** (a panelen „Battery interface") és egy hozzá
+  tartozó **kapcsoló** („Battery button switch"). Ez fizikai tápbemenet, **nem
+  GPIO** — ezért nem szerepel a board-definíció GPIO-listájában.
+- **A panel TUD tölteni:** a spec szó szerint *„Supports lithium battery power
+  supply, supports both charging and discharging, and has over charging and over
+  discharging protection."* — azaz **van fedélzeti Li-ion töltő- és védelmi
+  áramkör** (túltöltés- és mélykisütés-védelem). USB Type-C-ről csatlakoztatva
+  tölti a bekötött 1 cellás akkut, és arról is működik USB nélkül.
+- ⚠️ A spec **nem dokumentál akkufeszültség-mérést** (nincs megadott `VBAT` ADC
+  osztó/láb), és a smartdisplay board-definíció sem deklarál ilyet. Ha
+  töltöttség-kijelzést szeretnél, magadnak kell egy feszültségosztót egy szabad
+  ADC1 lábra (pl. GPIO35/GPIO34, csak bemenet) kötnöd.
+- A töltő-IC konkrét típusát a spec nem nevezi meg; revíziónként eltérhet, ezért
+  nagy töltőáram előtt érdemes a saját paneleden ellenőrizni.
 
 ### Szabad / kivezetett GPIO-k
 A board oldalsó csatlakozóin elérhető szabad lábak (a konkrét silk-screen a
@@ -214,5 +222,6 @@ lv_demo_widgets();   // a lv_conf.h-ban engedélyezve (LV_USE_DEMO_WIDGETS)
 - 2432S022C működés bejelentés: <https://github.com/rzeldent/esp32-smartdisplay/discussions/128>
 - LVGL dokumentáció: <https://docs.lvgl.io/>
 - CYD általános referencia (028R): <https://randomnerdtutorials.com/cheap-yellow-display-esp32-2432s028r/>
+- **Hivatalos gyártói specifikáció** (Shenzhen Jingcai, ESP32-2432S022N/C — akku/töltés, csatlakozók): <https://make.net.za/wp-content/datasheets/Shenzhen%20Jingcai%20Intelligent%20ESP32-2432S022%20Product%20Spec.pdf>
 - DIYmalls 2432S022C felhasználói kézikönyv (csatlakozók, akku/P1/P2/P3): <https://manuals.plus/asin/B0DH1P13DW>
 - Sunton hivatalos 2432S022 kódbázis: <https://github.com/lsdlsd88/2.2inch_ESP32-2432S022>
