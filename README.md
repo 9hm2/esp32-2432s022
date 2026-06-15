@@ -90,12 +90,36 @@ Pixel órajel: 12 MHz. Színmélység: 16 bit (RGB565).
 |---|---|
 | Hangszóró kimenet | **26** |
 
+### Fizikai csatlakozók és tápellátás
+A panelen lévő JST 1.25 mm-es portok (a DIYmalls/Sunton dokumentáció szerint):
+
+| Jelölés | Típus | Funkció |
+|---|---|---|
+| micro-USB | USB | Tápellátás + programozás (CH340 USB-UART) |
+| **P1** | 1.25 mm **4 tűs** | Kiegészítő tápcsatlakozó (be/ki vezetett táp – pl. 5V/3V3/GND) |
+| **P2** | 1.25 mm **2 tűs** | **Akkumulátor-csatlakozó** (1 cellás Li-ion/LiPo) + külön **akku kapcsoló** |
+| **P3** | 1.25 mm **2 tűs** | Hangszóró (GPIO26) |
+| BOOT / RESET | nyomógomb | Bootloader mód / újraindítás |
+
+**Az akkumulátorról fontos tudni:**
+- Van **2 tűs akkucsatlakozó (P2)** és egy hozzá tartozó **kapcsoló**, amivel az
+  akku tápja be-/kikapcsolható. Ez fizikai tápbemenet, **nem GPIO** — ezért nincs
+  is rá láb a board-definícióban (a korábbi pinout csak a GPIO-kat listázta).
+- **Töltőáramkör (charge IC) tudtommal nincs a panelen** és **nincs gyári
+  akkufeszültség-mérés** sem dedikált ADC osztón keresztül (a smartdisplay
+  board-definíció nem deklarál `VBAT`/akku ADC lábat). Vagyis az akkut külön
+  töltővel kell tölteni, és ha állapotjelzést szeretnél, magadnak kell egy
+  feszültségosztót egy szabad ADC1 lábra (pl. GPIO35/GPIO34, csak bemenet) kötni.
+- Ezt érdemes a saját paneleden multiméterrel/ránézéssel ellenőrizni, mert a
+  Sunton revíziók eltérhetnek.
+
 ### Szabad / kivezetett GPIO-k
 A board oldalsó csatlakozóin elérhető szabad lábak (a konkrét silk-screen a
 panel revíziójától függ): jellemzően **GPIO35** (csak bemenet), **GPIO34**
 (csak bemenet), **GPIO0** (BL-lel megosztva), valamint a JST P3/CN1 portokon
 kivezetett I2C (21/22). Bővítés előtt ellenőrizd, hogy a láb nem ütközik-e a
-kijelző buszával.
+kijelző buszával. Akkufeszültség-mérésre a GPIO34/35 (ADC1) a jó választás,
+mert ezek Wi-Fi mellett is működnek.
 
 ---
 
@@ -190,3 +214,5 @@ lv_demo_widgets();   // a lv_conf.h-ban engedélyezve (LV_USE_DEMO_WIDGETS)
 - 2432S022C működés bejelentés: <https://github.com/rzeldent/esp32-smartdisplay/discussions/128>
 - LVGL dokumentáció: <https://docs.lvgl.io/>
 - CYD általános referencia (028R): <https://randomnerdtutorials.com/cheap-yellow-display-esp32-2432s028r/>
+- DIYmalls 2432S022C felhasználói kézikönyv (csatlakozók, akku/P1/P2/P3): <https://manuals.plus/asin/B0DH1P13DW>
+- Sunton hivatalos 2432S022 kódbázis: <https://github.com/lsdlsd88/2.2inch_ESP32-2432S022>
