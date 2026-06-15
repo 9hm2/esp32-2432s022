@@ -109,7 +109,7 @@ alapján a következő csatlakozók/kezelőszervek vannak a kártyán:
 | **type-C** | USB Type-C | Tápellátás (5 V) + programozás (CH340 USB-UART) + akkutöltés |
 | **Battery interface** | JST 1.25 mm **2 tűs** | **Akkumulátor-csatlakozó** (1 cellás Li-ion/LiPo, BAT+/GND) |
 | **Battery button switch** | kapcsoló | Az **akku tápjának** be-/kikapcsolása |
-| **4P 1.25 Power supply base** | JST 1.25 mm **4 tűs** | Táp + soros port (jellemzően **Vin(5V) / GND / TXD / RXD**) |
+| **4P 1.25 Power supply base** | JST 1.25 mm **4 tűs** (HC-1.25-4PWT) | Táp + soros port: **Vin(5V) / GND / U0TXD(GPIO1) / U0RXD(GPIO3)** — soros vonalak 100 Ω-on át (rajz szerint) |
 | **Speak** | JST 1.25 mm **2 tűs** | Hangszóró (GPIO26-on keresztül, audio erősítővel) |
 | **TF** | microSD foglalat | SPI (CS=5, MOSI=23, SCLK=18, MISO=19) |
 | **RESET / BOOT** | nyomógomb | Újraindítás / bootloader mód (egykattintásos feltöltés) |
@@ -118,17 +118,27 @@ alapján a következő csatlakozók/kezelőszervek vannak a kártyán:
 - Van **2 tűs akkucsatlakozó** (a panelen „Battery interface") és egy hozzá
   tartozó **kapcsoló** („Battery button switch"). Ez fizikai tápbemenet, **nem
   GPIO** — ezért nem szerepel a board-definíció GPIO-listájában.
-- **A panel TUD tölteni:** a spec szó szerint *„Supports lithium battery power
-  supply, supports both charging and discharging, and has over charging and over
-  discharging protection."* — azaz **van fedélzeti Li-ion töltő- és védelmi
-  áramkör** (túltöltés- és mélykisütés-védelem). USB Type-C-ről csatlakoztatva
-  tölti a bekötött 1 cellás akkut, és arról is működik USB nélkül.
-- ⚠️ A spec **nem dokumentál akkufeszültség-mérést** (nincs megadott `VBAT` ADC
-  osztó/láb), és a smartdisplay board-definíció sem deklarál ilyet. Ha
-  töltöttség-kijelzést szeretnél, magadnak kell egy feszültségosztót egy szabad
-  ADC1 lábra (pl. GPIO35/GPIO34, csak bemenet) kötnöd.
-- A töltő-IC konkrét típusát a spec nem nevezi meg; revíziónként eltérhet, ezért
-  nagy töltőáram előtt érdemes a saját paneleden ellenőrizni.
+- **A panel TUD tölteni — a kapcsolási rajz is megerősíti.** A spec szerint
+  *„Supports lithium battery power supply, supports both charging and discharging,
+  and has over charging and over discharging protection."* A rajzon ezt egy
+  **integrált power-bank IC** (U8) valósítja meg: bemenet 5 V (USB-C), `SW` lábán
+  egy **L1 induktor** boost-ot ad, kimenete a **VOUT-BAT** rendszerszint, `BAT`
+  lábán a cella, plusz `KEY` (a „Battery button switch"), `LED1..LED3`
+  töltésjelző kimenetek és túltöltés/mélykisütés-védelem. A topológia (VIN / KEY /
+  LED1-3 / BAT / VOUT / SW+induktor) egy **IP5306-osztályú** power-bank IC-re vall.
+- **Tápút (rajz szerint):** USB-C 5 V → `D1` (1N5819 Schottky) + `Q1` (AO3401
+  P-MOSFET, fordított-polaritás/ideal-diode) → power-bank IC (U8) → **VOUT-BAT** →
+  **két külön AMS1117-3.3 LDO**: `U7` adja a **3.3 V-ot az ESP32-nek**, `U1` a
+  **3.3 V-ot a TFT-nek**. A VOUT-BAT-ot az IC akár USB-ről, akár az akkuról
+  állítja elő → USB nélkül, akkuról is megy a panel.
+- ⚠️ **Nincs akkufeszültség-mérés az ESP32 felé — ezt a rajz is megerősíti:**
+  nincs feszültségosztó a `BAT`-ról egyetlen ADC GPIO-ra sem. A töltöttséget az IC
+  saját `LED1..LED3` kimenetei jelzik, ezek nem mennek a vezérlőre. Ha szoftveres
+  töltöttség-kijelzést akarsz, magadnak kell egy feszültségosztót egy szabad ADC1
+  lábra (pl. GPIO35/GPIO34, csak bemenet) kötnöd.
+- A pontos IC-cikkszám a rajzon nem olvasható ki egyértelműen, revíziónként
+  eltérhet — nagy töltőáram/extra terhelés előtt érdemes a saját paneleden
+  ellenőrizni.
 
 ### Szabad / kivezetett GPIO-k
 A board oldalsó csatlakozóin elérhető szabad lábak (a konkrét silk-screen a
@@ -232,5 +242,6 @@ lv_demo_widgets();   // a lv_conf.h-ban engedélyezve (LV_USE_DEMO_WIDGETS)
 - LVGL dokumentáció: <https://docs.lvgl.io/>
 - CYD általános referencia (028R): <https://randomnerdtutorials.com/cheap-yellow-display-esp32-2432s028r/>
 - **Hivatalos gyártói specifikáció** (Shenzhen Jingcai, ESP32-2432S022N/C — akku/töltés, csatlakozók): <https://make.net.za/wp-content/datasheets/Shenzhen%20Jingcai%20Intelligent%20ESP32-2432S022%20Product%20Spec.pdf>
+- A tápellátás/USB/SD szakaszt a panel **hivatalos kapcsolási rajza** alapján is ellenőriztük (POWER / USB / Lithium battery charging / SD_Card blokkok).
 - DIYmalls 2432S022C felhasználói kézikönyv (csatlakozók, akku/P1/P2/P3): <https://manuals.plus/asin/B0DH1P13DW>
 - Sunton hivatalos 2432S022 kódbázis: <https://github.com/lsdlsd88/2.2inch_ESP32-2432S022>
