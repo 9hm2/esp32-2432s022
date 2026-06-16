@@ -79,22 +79,10 @@ static void term_draw_cb(lv_event_t *e)
     ld.font = &term_font;
     ld.opa = LV_OPA_COVER;
 
-    // Csak a vágási (clip) területbe eso cellákat rajzoljuk -> részleges
-    // frissítésnél csak a megváltozott sorok kerülnek feldolgozásra (gyors).
-    const lv_area_t clip = layer->_clip_area;
-    int y0 = (clip.y1 - oy) / CELL_H;
-    int y1 = (clip.y2 - oy) / CELL_H;
-    int x0 = (clip.x1 - ox) / CELL_W;
-    int x1 = (clip.x2 - ox) / CELL_W;
-    if (y0 < 0) y0 = 0;
-    if (x0 < 0) x0 = 0;
-    if (y1 >= vt.rows()) y1 = vt.rows() - 1;
-    if (x1 >= vt.cols()) x1 = vt.cols() - 1;
-
     const bool live = (vt.scroll() == 0);
-    for (int y = y0; y <= y1; y++)
+    for (int y = 0; y < vt.rows(); y++)
     {
-        for (int x = x0; x <= x1; x++)
+        for (int x = 0; x < vt.cols(); x++)
         {
             const VtCell &c = vt.viewCell(x, y); // scrollback-figyelo
             lv_color_t fg = (c.flags & VT_FG_DEF) ? Vt100::defaultFg()
@@ -555,7 +543,7 @@ void setup()
 
 static uint32_t last_tick = 0;
 static uint32_t last_draw = 0;
-static constexpr uint32_t REDRAW_MS = 25; // ~40 fps (részleges frissítés -> olcsó)
+static constexpr uint32_t REDRAW_MS = 40; // ~25 fps — a gyors kimenetet összevonja
 
 void loop()
 {
@@ -571,25 +559,13 @@ void loop()
 
     pump_serial();
 
-    // Throttle + RÉSZLEGES frissítés: csak a megváltozott sorokat invalidáljuk,
-    // így a tipikus változás (kurzor, néhány sor) gyors; teljes képet csak
-    // görgetéskor rajzolunk.
+    // Throttle: a bejövo adatot összevonjuk, és legfeljebb ~25 fps-sel rajzolunk
+    // újra. Így a gyors konzol-kimenet gördülékeny marad (nem rajzol minden byte-ra).
     if (vt.dirty() && (now - last_draw) >= REDRAW_MS)
     {
-        int top = vt.dirtyTop(), bot = vt.dirtyBot();
         vt.clearDirty();
         last_draw = now;
-
-        lv_area_t a;
-        lv_obj_get_content_coords(term_obj, &a);
-        lv_area_t inv;
-        inv.x1 = a.x1;
-        inv.x2 = a.x2;
-        inv.y1 = a.y1 + top * CELL_H;
-        inv.y2 = a.y1 + (bot + 1) * CELL_H - 1;
-        if (inv.y1 < a.y1) inv.y1 = a.y1;
-        if (inv.y2 > a.y2) inv.y2 = a.y2;
-        lv_obj_invalidate_area(term_obj, &inv);
+        lv_obj_invalidate(term_obj);
     }
 
     lv_timer_handler();

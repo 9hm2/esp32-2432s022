@@ -41,10 +41,8 @@ public:
     void feed(uint8_t b);
     void feedStr(const char *s);
 
-    bool dirty() const { return _dBot >= _dTop; }
-    void clearDirty() { _dTop = VT_MAX_ROWS; _dBot = -1; }
-    int dirtyTop() const { return _dTop; }
-    int dirtyBot() const { return _dBot; }
+    bool dirty() const { return _dirty; }
+    void clearDirty() { _dirty = false; }
 
     int cols() const { return _cols; }
     int rows() const { return _rows; }
@@ -71,7 +69,7 @@ private:
     int _cx = 0, _cy = 0;     // kurzor
     int _sx = 0, _sy = 0;     // mentett kurzor
     int _top = 0, _bot = 0;   // görgetési régió (sorok)
-    int _dTop = 0, _dBot = -1; // piszkos sortartomány (újrarajzolandó)
+    bool _dirty = true;
     bool _cursorVisible = true;
 
     // Aktuális (SGR) attribútumok.
@@ -99,19 +97,10 @@ private:
     int _nparams = 0;
     bool _priv = false; // CSI '?'
 
-    void markRow(int y)
-    {
-        y = (y < 0) ? 0 : (y >= _rows ? _rows - 1 : y);
-        if (y < _dTop) _dTop = y;
-        if (y > _dBot) _dBot = y;
-    }
-    void markAll() { _dTop = 0; _dBot = _rows - 1; }
-
     VtCell blank() const;
     void clearRow(int y);
     void copyRow(int dst, int src);
     void putChar(uint8_t ch);
-    void feedByte(uint8_t b); // a tényleges parser (a feed() ezt csomagolja)
     void lineFeed();
     void scrollUpRange(int top, int bot, int n);
     void scrollDownRange(int top, int bot, int n);

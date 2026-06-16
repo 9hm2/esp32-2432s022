@@ -44,7 +44,6 @@ void Vt100::clearRow(int y)
     VtCell b = blank();
     for (int x = 0; x < _cols; x++)
         _cells[y * _cols + x] = b;
-    markRow(y);
 }
 
 void Vt100::copyRow(int dst, int src)
@@ -77,7 +76,7 @@ void Vt100::reset()
     _top = 0;
     _bot = _rows - 1;
     _sbHead = _sbCount = _scroll = 0;
-    markAll();
+    _dirty = true;
 }
 
 // --- Scrollback ------------------------------------------------------------
@@ -112,12 +111,8 @@ const VtCell &Vt100::viewCell(int x, int vy) const
 
 void Vt100::setScroll(int s)
 {
-    int ns = constrain(s, 0, _sbCount);
-    if (ns != _scroll)
-    {
-        _scroll = ns;
-        markAll(); // a teljes nézet eltolódik
-    }
+    _scroll = constrain(s, 0, _sbCount);
+    _dirty = true;
 }
 
 void Vt100::scrollBy(int lines) { setScroll(_scroll + lines); }
@@ -135,8 +130,7 @@ void Vt100::scrollUpRange(int top, int bot, int n)
     for (int y = bot - n + 1; y <= bot; y++)
         if (y >= 0 && y < _rows)
             clearRow(y);
-    markRow(top);
-    markRow(bot); // az egész régió újrarajzolandó
+    _dirty = true;
 }
 
 void Vt100::scrollDownRange(int top, int bot, int n)
@@ -148,8 +142,7 @@ void Vt100::scrollDownRange(int top, int bot, int n)
     for (int y = top; y < top + n; y++)
         if (y >= 0 && y < _rows)
             clearRow(y);
-    markRow(top);
-    markRow(bot);
+    _dirty = true;
 }
 
 void Vt100::lineFeed()
@@ -173,8 +166,8 @@ void Vt100::putChar(uint8_t ch)
     c.bg = _bg;
     c.flags = (_bold ? VT_BOLD : 0) | (_inv ? VT_INVERSE : 0) |
               (_fgDef ? VT_FG_DEF : 0) | (_bgDef ? VT_BG_DEF : 0);
-    markRow(_cy);
     _cx++;
+    _dirty = true;
 }
 
 // --- Parser ----------------------------------------------------------------
@@ -195,23 +188,13 @@ void Vt100::feedStr(const char *s)
 
 void Vt100::feed(uint8_t b)
 {
-    // A kurzor régi és új sorát is piszkosnak jelöljük, hogy a blokk-kurzor
-    // a régi helyérol eltunjön és az újon megjelenjen.
-    int pcx = _cx, pcy = _cy;
-    feedByte(b);
-    if (_cy != pcy) { markRow(pcy); markRow(_cy); }
-    else if (_cx != pcx) markRow(_cy);
-}
-
-void Vt100::feedByte(uint8_t b)
-{
     switch (_st)
     {
     case St::Normal:
         if (b == 0x1B) { _st = St::Esc; return; }
-        if (b == '\n') { lineFeed(); return; }
-        if (b == '\r') { _cx = 0; return; }
-        if (b == '\b') { if (_cx > 0) _cx--; return; }
+        if (b == '\n') { lineFeed(); _dirty = true; return; }
+        if (b == '\r') { _cx = 0; _dirty = true; return; }
+        if (b == '\b') { if (_cx > 0) _cx--; _dirty = true; return; }
         if (b == '\t') { _cx = (_cx + 8) & ~7; if (_cx >= _cols) _cx = _cols - 1; return; }
         if (b == 0x07) return; // BEL
         if (b >= 0x20 && b < 0x7F) putChar(b);
@@ -333,7 +316,7 @@ void Vt100::csiDispatch(uint8_t f)
         else if (m == 1) { for (int y = 0; y < _cy; y++) clearRow(y);
                            for (int x = 0; x <= _cx && x < _cols; x++) _cells[_cy * _cols + x] = blank(); }
         else { for (int y = 0; y < _rows; y++) clearRow(y); }
-        markRow(_cy);
+        _dirty = true;
         break;
     }
     case 'K':
@@ -342,7 +325,7 @@ void Vt100::csiDispatch(uint8_t f)
         int x0 = (m == 1) ? 0 : _cx;
         int x1 = (m == 0) ? _cols - 1 : (m == 1 ? _cx : _cols - 1);
         for (int x = x0; x <= x1 && x < _cols; x++) _cells[_cy * _cols + x] = blank();
-        markRow(_cy);
+        _dirty = true;
         break;
     }
     case 'L': scrollDownRange(_cy, _bot, param(0, 1)); break; // sor beszúrás
@@ -354,7 +337,7 @@ void Vt100::csiDispatch(uint8_t f)
         int n = min(param(0, 1), _cols - _cx);
         for (int x = _cx; x < _cols; x++)
             _cells[_cy * _cols + x] = (x + n < _cols) ? _cells[_cy * _cols + x + n] : blank();
-        markRow(_cy);
+        _dirty = true;
         break;
     }
     case '@': // karakter beszúrás (jobbra tol)
@@ -362,14 +345,14 @@ void Vt100::csiDispatch(uint8_t f)
         int n = min(param(0, 1), _cols - _cx);
         for (int x = _cols - 1; x >= _cx; x--)
             _cells[_cy * _cols + x] = (x - n >= _cx) ? _cells[_cy * _cols + x - n] : blank();
-        markRow(_cy);
+        _dirty = true;
         break;
     }
     case 'X': // karakterek törlése helyben
     {
         int n = min(param(0, 1), _cols - _cx);
         for (int x = _cx; x < _cx + n; x++) _cells[_cy * _cols + x] = blank();
-        markRow(_cy);
+        _dirty = true;
         break;
     }
     case 'm': applySgr(); break;
@@ -382,8 +365,9 @@ void Vt100::csiDispatch(uint8_t f)
     case 'u': _cx = _sx; _cy = _sy; break;
     case 'h':
     case 'l':
-        if (_priv && param(0, 0) == 25) { _cursorVisible = (f == 'h'); markRow(_cy); }
+        if (_priv && param(0, 0) == 25) _cursorVisible = (f == 'h');
         break;
     default: break;
     }
+    _dirty = true;
 }
