@@ -1,8 +1,8 @@
 # apps/ — a launcherrel betöltheto alkalmazások
 
-Ezek a projektek a [grafikus SD-launcherrel](../firmware/bootloader/) töltodnek be
+Ezek a projektek a [grafikus SD-launcherrel](../) (a repó gyökere) töltodnek be
 és futnak (OTA flash-and-boot). Mindegyik önálló PlatformIO projekt, közös
-partíciótáblával (`firmware/bootloader/partitions.csv`).
+partíciótáblával (`partitions.csv` (gyökér)).
 
 | Mappa | Leírás |
 |---|---|

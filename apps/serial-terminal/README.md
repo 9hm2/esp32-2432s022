@@ -1,6 +1,6 @@
 # Serial Terminal — Raspberry Pi soros konzol a CYD kijelzon
 
-Az [SD-launcherrel](../../firmware/bootloader/) betöltheto app: **valódi, látható
+Az [SD-launcherrel](../../) betöltheto app: **valódi, látható
 soros terminál**. Az UART-on érkezo szöveget görgetheto terminálablakban mutatja,
 képernyo-billentyuzetrol parancsot küldhetsz, és a beállítások perzisztensek.
 

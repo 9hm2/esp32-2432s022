@@ -1,123 +1,141 @@
-/**
- * ESP32-2432S022C (CYD 2.2") - grafikus keretrendszer demó
- * --------------------------------------------------------
- * Stack: Arduino + LVGL 9 + esp32-smartdisplay
- *   - Kijelző: ST7789, 240x320, 8 bites i80 (8080) párhuzamos busz
- *   - Touch:   CST816S kapacitív, I2C (SDA=21, SCL=22)
- *
- * A demó bemutatja a teljes grafikus láncot:
- *   - kijelző init + háttérvilágítás vezérlés
- *   - érintés (LVGL input device a smartdisplay-en keresztül)
- *   - LVGL widgetek (címke, gomb számlálóval, csúszka, állapotsor)
- */
+// Grafikus SD-kártyás bootloader / app-indító — ESP32-2432S022C
+// ============================================================
+// M2 mérföldkő: a launcher érintőképernyős LVGL listában mutatja az SD-kártyán
+// lévő .bin app-fájlokat. A kiválasztás egyelőre csak visszajelez (a tényleges
+// SD->flash futtatás az M3-ban jön).
 
 #include <Arduino.h>
+#include <SD.h>
 #include <esp32_smartdisplay.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
 
-static lv_obj_t *counter_label;   // gomb megnyomások száma
-static lv_obj_t *status_label;    // futásidejű állapot (heap, uptime)
-static uint32_t press_count = 0;
+#include "ota_runner.h"
+#include "sd_apps.h"
+#include "ui/launcher_ui.h"
 
-// --- Eseménykezelők -------------------------------------------------------
+// A panel SD-kártya CS lába (board: TF_CS = GPIO5).
+static constexpr uint8_t SD_CS = 5;
 
-static void btn_clicked_cb(lv_event_t *e)
+// Az app-fájlok könyvtára az SD-n; ha üres/nincs, a gyökeret nézzük.
+static constexpr const char *APPS_DIR = "/apps";
+
+static constexpr size_t MAX_APPS = 64;
+static AppEntry apps[MAX_APPS];
+static size_t app_count = 0;
+
+// Diagnosztika a soros portra: futó + app-partíciók.
+static void printPartitions()
 {
-    press_count++;
-    lv_label_set_text_fmt(counter_label, "Erintesek: %lu", (unsigned long)press_count);
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    Serial.printf("Futo particio : %-8s @ 0x%06x (%u KB)\n", running->label,
+                  (unsigned)running->address, (unsigned)(running->size / 1024));
+
+    const esp_partition_t *ota0 = esp_partition_find_first(
+        ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
+    if (ota0)
+        Serial.printf("ota_0 (app)   : %-8s @ 0x%06x (%u KB)\n", ota0->label,
+                      (unsigned)ota0->address, (unsigned)(ota0->size / 1024));
 }
 
-static void brightness_changed_cb(lv_event_t *e)
+// A kiválasztott app flashelésére váró kérés (a tényleges munka a loop()-ban
+// fut, nem az LVGL eseménykezelőben).
+static AppEntry pending_app;
+static volatile bool flash_requested = false;
+
+// Akkor hívódik, amikor a felhasználó appot választ a listából.
+static void onAppSelected(const AppEntry &app)
 {
-    lv_obj_t *slider = (lv_obj_t *)lv_event_get_target(e);
-    int32_t value = lv_slider_get_value(slider);   // 0..100
-    smartdisplay_lcd_set_backlight(value / 100.0f); // 0.0..1.0
+    Serial.printf("Kivalasztva: %s (%s) -> %s\n", app.name.c_str(),
+                  humanSize(app.size).c_str(), app.path.c_str());
+    pending_app = app;
+    flash_requested = true;
 }
 
-// --- UI felépítés ---------------------------------------------------------
-
-static void build_ui(void)
+// OTA folyamat -> progress bar frissítés.
+static void onFlashProgress(uint32_t written, uint32_t total, void *)
 {
-    lv_obj_t *screen = lv_screen_active();
-    lv_obj_set_style_bg_color(screen, lv_color_hex(0x101418), LV_PART_MAIN);
-
-    // Cím
-    lv_obj_t *title = lv_label_create(screen);
-    lv_label_set_text(title, "ESP32-2432S022C");
-    lv_obj_set_style_text_color(title, lv_color_hex(0xFFD400), LV_PART_MAIN); // CYD sarga
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
-
-    lv_obj_t *subtitle = lv_label_create(screen);
-    lv_label_set_text(subtitle, "LVGL 9 + smartdisplay\nST7789 i80 | CST816S touch");
-    lv_obj_set_style_text_align(subtitle, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_text_color(subtitle, lv_color_hex(0xA0A8B0), LV_PART_MAIN);
-    lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, 44);
-
-    // Számláló gomb (érintés teszt)
-    lv_obj_t *btn = lv_button_create(screen);
-    lv_obj_set_size(btn, 180, 56);
-    lv_obj_align(btn, LV_ALIGN_CENTER, 0, -10);
-    lv_obj_add_event_cb(btn, btn_clicked_cb, LV_EVENT_CLICKED, NULL);
-
-    counter_label = lv_label_create(btn);
-    lv_label_set_text(counter_label, "Erintesek: 0");
-    lv_obj_center(counter_label);
-
-    // Háttérvilágítás csúszka
-    lv_obj_t *bl_label = lv_label_create(screen);
-    lv_label_set_text(bl_label, "Hattervilagitas");
-    lv_obj_set_style_text_color(bl_label, lv_color_hex(0xA0A8B0), LV_PART_MAIN);
-    lv_obj_align(bl_label, LV_ALIGN_CENTER, 0, 60);
-
-    lv_obj_t *slider = lv_slider_create(screen);
-    lv_obj_set_width(slider, 180);
-    lv_slider_set_range(slider, 5, 100);
-    lv_slider_set_value(slider, 50, LV_ANIM_OFF);
-    lv_obj_align(slider, LV_ALIGN_CENTER, 0, 90);
-    lv_obj_add_event_cb(slider, brightness_changed_cb, LV_EVENT_VALUE_CHANGED, NULL);
-
-    // Állapotsor (lent)
-    status_label = lv_label_create(screen);
-    lv_obj_set_style_text_color(status_label, lv_color_hex(0x70C0FF), LV_PART_MAIN);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_label_set_text(status_label, "indul...");
-    lv_obj_align(status_label, LV_ALIGN_BOTTOM_MID, 0, -8);
+    uint8_t pct = total ? (uint8_t)(((uint64_t)written * 100) / total) : 0;
+    char buf[48];
+    snprintf(buf, sizeof(buf), "%u%%  (%u/%u KB)", pct,
+             (unsigned)(written / 1024), (unsigned)(total / 1024));
+    launcher_ui_progress_update(pct, buf);
 }
 
-// Periodikus állapotfrissítés (1 mp)
-static void status_timer_cb(lv_timer_t *t)
+// A kért app beírása az ota_0-ba és átindítás rá (a loop()-ból hívva).
+static void doFlashAndBoot()
 {
-    lv_label_set_text_fmt(status_label, "Free heap: %u B | Uptime: %lu s",
-                          (unsigned)ESP.getFreeHeap(),
-                          (unsigned long)(millis() / 1000));
+    Serial.printf("Flashelés: %s ...\n", pending_app.path.c_str());
+    launcher_ui_progress_begin("Flashelés...");
+
+    OtaResult r = ota_flash_app(pending_app, onFlashProgress, nullptr);
+
+    launcher_ui_progress_end();
+
+    if (r == OTA_OK)
+    {
+        Serial.println("Flashelés OK -> ujraindulas az appba.");
+        launcher_ui_show_message("Kész",
+                                 "Betoltve, indul az app.\nRESET = vissza ide.");
+        lv_refr_now(NULL);
+        ota_reboot(); // nem ter vissza
+    }
+    else
+    {
+        Serial.printf("Flashelés HIBA: %s\n", ota_result_str(r));
+        char m[128];
+        snprintf(m, sizeof(m), "Nem sikerult:\n%s", ota_result_str(r));
+        launcher_ui_show_message("Sikertelen", m);
+    }
 }
 
-// --- Arduino belépési pontok ---------------------------------------------
-
-void setup(void)
+void setup()
 {
     Serial.begin(115200);
-    Serial.println("ESP32-2432S022C grafikus demo indul...");
+    delay(300);
+    Serial.println("\n\n=== SD-bootloader (launcher) - M2 ===");
+    printPartitions();
 
-    // Kijelző + touch inicializálás (50%-os fenyerovel indul)
+    // Kijelző + touch + LVGL
     smartdisplay_init();
+    lv_display_set_rotation(lv_display_get_default(), LV_DISPLAY_ROTATION_0);
+    launcher_ui_init();
 
-    // Alapertelmezett tajolas: portrait (240x320 allo)
-    lv_display_t *display = lv_display_get_default();
-    lv_display_set_rotation(display, LV_DISPLAY_ROTATION_0);
+    // SD csatolás + app-keresés
+    Serial.println("SD-kartya csatolasa...");
+    if (!sdInit(SD_CS))
+    {
+        Serial.println("HIBA: az SD-kartya nem csatolhato.");
+        launcher_ui_set_apps(nullptr, 0, onAppSelected);
+        launcher_ui_show_message("Nincs SD-kartya",
+                                 "Helyezz be egy FAT32 kartyat /apps/*.bin fajlokkal, majd RESET.");
+        return;
+    }
+    Serial.printf("SD csatolva. Meret: %llu MB\n", SD.cardSize() / (1024ull * 1024ull));
 
-    build_ui();
-    lv_timer_create(status_timer_cb, 1000, NULL);
+    app_count = scanApps(APPS_DIR, apps, MAX_APPS);
+    if (app_count == 0)
+        app_count = scanApps("/", apps, MAX_APPS);
+
+    Serial.printf("%u darab .bin talalva.\n", (unsigned)app_count);
+    launcher_ui_set_apps(apps, app_count, onAppSelected);
 }
 
 static uint32_t last_tick = 0;
 
-void loop(void)
+void loop()
 {
     uint32_t now = millis();
     lv_tick_inc(now - last_tick);
     last_tick = now;
+    lv_timer_handler();
 
-    lv_timer_handler(); // LVGL feldolgozás (rajzolás + input)
+    // A flashelést a fő ciklusban végezzük (nem az esemenykezelőben).
+    if (flash_requested)
+    {
+        flash_requested = false;
+        doFlashAndBoot();
+    }
+
     delay(5);
 }

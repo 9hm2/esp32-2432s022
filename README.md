@@ -171,23 +171,34 @@ mert ezek Wi-Fi mellett is működnek.
 
 ## 3. Projektstruktúra
 
+A repó FO firmware-e a **grafikus SD-launcher** (bootloader), ez a **gyökér**
+PlatformIO projekt — a gyökérbol `pio run` EZT fordítja.
+
 ```
 .
-├── platformio.ini                 # PlatformIO konfiguráció (env: esp32-2432S022C)
+├── platformio.ini          # a LAUNCHER projektje (env: bootloader) — ez fordul a gyökérbol
+├── partitions.csv          # particiotabla (factory launcher + ota_0 app)
+├── src/                    # a launcher forrása (SD lista, OTA flash-and-boot, LVGL UI)
+├── include/lv_conf.h       # a launcher LVGL configja
 ├── boards/
-│   └── esp32-2432S022C.json       # board-definíció (pinout build flag-ekkel)
-├── include/
-│   └── lv_conf.h                  # LVGL 9 konfiguráció
-├── src/
-│   └── main.cpp                   # grafikus + touch demó
-├── .gitignore
-└── README.md
+│   └── esp32-2432S022C.json   # board-definíció (pinout build flag-ekkel)
+├── apps/                   # a launcherrel betöltheto appok
+│   ├── template/           # app-sablon
+│   └── serial-terminal/    # VT100 soros terminál (Pi konzol + BLE)
+├── examples/
+│   └── display-demo/       # a kezdeti grafikus/touch demó (külön projekt)
+├── docs/
+│   ├── LAUNCHER.md         # a launcher leírása
+│   └── BOOTLOADER_PLAN.md  # a launcher fejlesztési terve
+└── README.md               # ez a fájl (eszköz-/hardver-dokumentáció)
 ```
 
 A board-definíciót szándékosan **közvetlenül a repóba** tettük (nem git
-submodule), így a projekt önállóan, hálózati submodule nélkül is fordul. A
-`platformio.ini`-ben a `boards_dir = boards` sor miatt a PlatformIO automatikusan
-felismeri a `esp32-2432S022C` board-ot.
+submodule), így minden alprojekt önállóan, hálózati submodule nélkül is fordul
+(`boards_dir`).
+
+> A kezdeti „grafikus keretrendszer" demó az `examples/display-demo/` alá került;
+> a lenti 5. szakasz grafikus tudnivalói arra is érvényesek.
 
 ---
 
@@ -197,21 +208,22 @@ felismeri a `esp32-2432S022C` board-ot.
 - [PlatformIO Core](https://platformio.org/install/cli) (`pio`) vagy a VS Code
   PlatformIO bővítmény.
 
-### Parancsok
+### A launcher (fo firmware) — a repó gyökerébol
 ```bash
-# Fordítás
-pio run
+pio run                 # fordítás (env: bootloader)
+pio run --target upload # feltöltés a panelra
+pio device monitor      # soros monitor (115200 baud)
+```
 
-# Fordítás + feltöltés a csatlakoztatott board-ra
-pio run --target upload
-
-# Soros monitor (115200 baud)
-pio device monitor
+### Egy app vagy a demó fordítása
+```bash
+cd apps/serial-terminal && pio run     # vagy apps/template
+cd examples/display-demo && pio run    # a kezdeti grafikus demó
 ```
 
 Első buildkor a PlatformIO letölti az `espressif32` platformot, az
-`esp32_smartdisplay` libet és az LVGL 9-et. A háttérvilágítás induláskor 50%-on
-van; a demó csúszkájával állítható.
+`esp32_smartdisplay` libet és az LVGL 9-et. Az appok `firmware.bin`-jét az
+SD-kártya `/apps/` mappájába másolva a launcher listázza és indítja.
 
 ---
 
@@ -228,12 +240,10 @@ A rajzbuffer a board-definícióban `DISPLAY_WIDTH*DISPLAY_HEIGHT/8` pixel, a be
 (DMA-képes) RAM-ban — mivel a panelen **nincs PSRAM**.
 
 ### Saját UI írása
-A `src/main.cpp` `build_ui()` függvénye a kiindulópont. Onnantól tiszta LVGL 9
-API-t használsz (`lv_label_create`, `lv_button_create`, `lv_slider_create`,
-`lv_obj_add_event_cb`, …). A beépített demók is kipróbálhatók:
-```cpp
-lv_demo_widgets();   // a lv_conf.h-ban engedélyezve (LV_USE_DEMO_WIDGETS)
-```
+Kiindulásnak az `examples/display-demo/src/main.cpp` `build_ui()` függvénye jó;
+onnantól tiszta LVGL 9 API-t használsz (`lv_label_create`, `lv_button_create`,
+`lv_slider_create`, `lv_obj_add_event_cb`, …). Önálló, a launcherrel betöltheto
+appot az `apps/template/` alapján készíts.
 
 ---
 

@@ -56,15 +56,16 @@ image / túl nagy / írási hiba) modális üzenetben jelennek meg.
 
 ## Build & feltöltés
 
+A launcher a repó **gyökér** PlatformIO projektje, ezért a gyökérbol:
+
 ```bash
-cd firmware/bootloader
-pio run                 # fordítás
+pio run                 # fordítás (a launcher = env: bootloader)
 pio run -t upload       # feltöltés a panelra
 pio device monitor      # 115200 baud, a listát itt látod
 ```
 
-A board-definíció a repó gyökerében lévő `boards/` mappából jön
-(`boards_dir = ../../boards`), a partíciótábla a `partitions.csv`.
+A board-definíció a gyökér `boards/` mappából jön (`boards_dir = boards`), a
+partíciótábla a gyökér `partitions.csv`.
 
 ## Partíciótábla (4 MB)
 

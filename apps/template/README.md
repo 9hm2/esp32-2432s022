@@ -1,6 +1,6 @@
 # App-sablon a grafikus SD-launcherhez
 
-Kiindulási alap **saját appokhoz**, amiket a [launcher](../../firmware/bootloader/)
+Kiindulási alap **saját appokhoz**, amiket a [launcher](../../)
 SD-kártyáról betölt és futtat (OTA flash-and-boot). Egy működő LVGL demót tartalmaz,
 benne egy **„Vissza a launcherhez"** gombbal.
 
@@ -9,7 +9,7 @@ benne egy **„Vissza a launcherhez"** gombbal.
 
 ## Miért ezt használd
 
-- **Közös partíciótábla** a launcherrel (`../../firmware/bootloader/partitions.csv`)
+- **Közös partíciótábla** a launcherrel (`../../partitions.csv`)
   → az `ota_0` méret/offset és az adat-partíciók (nvs) egyeznek.
 - Tartalmazza a **`return_to_launcher()`** helpert (`src/launcher_return.h`).
 - A „ne jelöld valid-nak" konvenció miatt a **RESET is visszavisz** a menübe.

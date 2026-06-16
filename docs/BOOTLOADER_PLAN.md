@@ -133,7 +133,7 @@ app-oldali módosítást igényel. (A kettő kombinálható.)
 ## 9. Javasolt projekt-/fájlstruktúra (a megvalósításhoz)
 
 ```
-firmware/bootloader/                # külön PlatformIO env vagy külön projekt
+firmware (a launcher a repó GYÖKERE)
 ├── platformio.ini                  # board=esp32-2432S022C, partíció CSV, rollback
 ├── partitions.csv                  # 4. pont
 ├── include/lv_conf.h               # a meglévő LVGL config (újrahasznosítva)
@@ -151,7 +151,7 @@ kerülhet, hogy a két dolog ne keveredjen.)
 
 | # | Mérföldkő | Tartalom | „Kész, ha…" |
 |---|---|---|---|
-| **M1** ✅ | Alapok | partíciótábla + factory launcher bebootol; SD mount; `.bin` lista a **soros porton** | listázza a fájlokat UART-on — **kész** (`firmware/bootloader/`, fordul) |
+| **M1** ✅ | Alapok | partíciótábla + factory launcher bebootol; SD mount; `.bin` lista a **soros porton** | listázza a fájlokat UART-on — **kész** (a launcher a repó gyökere) |
 | **M2** ✅ | GUI lista | LVGL görgethető lista a `.bin`-ekről, touch-kiválasztás | a képernyőn látszik és válaszható a lista — **kész** (fordul) |
 | **M3** ✅ | flash-and-boot | `.bin` SD→ota_0 másolás (`esp_ota_*`) + boot, progress + validáció | menüből indítható app — **kész** (fordul) |
 | **M4** | Teljes folyamat | GUI-ból indítás + progress + hibakezelés | tetszőleges (kompatibilis) app indítható menüből |
