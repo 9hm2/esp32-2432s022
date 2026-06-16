@@ -23,8 +23,8 @@ struct VtCell
     uint8_t flags; // VT_* bitek
 };
 
-// Max rács (a tájolásból adódó maximum bõven belefér).
-static constexpr int VT_MAX_COLS = 60;
+// Max rács (a tájolásból adódó maximum bõven belefér; 5px cellánál fekvoben ~62).
+static constexpr int VT_MAX_COLS = 64;
 static constexpr int VT_MAX_ROWS = 40;
 
 // Visszagörgetési (scrollback) puffer sorainak száma.

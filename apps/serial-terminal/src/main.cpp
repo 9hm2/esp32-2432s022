@@ -2,7 +2,7 @@
 // ========================================================================
 // Valódi VT100/ANSI terminál: karakterrács + kurzor + escape-szekvenciák
 // (kurzormozgás, törlés, görgetés, SGR színek/attribútumok). A rácsot egyedi
-// LVGL rajzolással jelenítjük meg, monospace UNSCII 8x8 fonttal.
+// LVGL rajzolással jelenítjük meg, kis monospace fonttal.
 //
 // BEKÖTÉS a Raspberry Pi-hez (a panel P1 / "4P 1.25 Power supply base" portja,
 // UART0): Pi TXD -> RXD(GPIO3), Pi RXD <- TXD(GPIO1), GND <-> GND. 3.3V logika.
@@ -12,23 +12,19 @@
 #include <esp32_smartdisplay.h>
 #include <esp_lcd_panel_ops.h>
 
-#include "bt_input.h"
 #include "config.h"
 #include "launcher_return.h"
 #include "vt100.h"
 
-#define BT_NAME "CYD-Terminal"
-
 static TermConfig cfg;
 static Vt100 vt;
 
-// Kis monospace font (DejaVu Sans Mono, 9px) — keskenyebb, mint az UNSCII 8x8,
-// így több oszlop fér ki. Cella: 6 px széles x 10 px magas (a font line_height-ja).
+// Kis monospace font (DejaVu Sans Mono, 8px, szoros sor) — keskeny, sok fér ki.
+// Cella: 5 px széles x 8 px magas (= a font line_height-ja a tömör igazításhoz).
 extern const lv_font_t term_font;
-static constexpr int CELL_W = 6;
-static constexpr int CELL_H = 10;
-static constexpr int TOP_H = 24; // állapotsor
-static constexpr int BAR_H = 40; // eszköztár
+static constexpr int CELL_W = 5;
+static constexpr int CELL_H = 8;
+static constexpr int TOP_H = 22; // felso sáv (állapot + gombok)
 
 // --- UI elemek -------------------------------------------------------------
 static lv_obj_t *term_obj = nullptr;   // egyedi rajzolású terminál
@@ -62,63 +58,6 @@ static void update_status()
                               (unsigned long)cfg.baud,
                               le_short[cfg.lineEnding <= 3 ? cfg.lineEnding : 0],
                               cfg.localEcho ? " echo" : "", vt.cols(), vt.rows());
-}
-
-// --- Általános modális popup (üzenet / passkey) ----------------------------
-
-static lv_obj_t *s_popup = nullptr;
-
-static void close_popup()
-{
-    if (s_popup)
-    {
-        lv_obj_delete(s_popup);
-        s_popup = nullptr;
-    }
-}
-
-static void popup_ok_cb(lv_event_t *) { close_popup(); }
-
-static void show_popup(const char *title, const char *body, bool okbtn)
-{
-    close_popup();
-    s_popup = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(s_popup, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(s_popup, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_popup, LV_OPA_60, LV_PART_MAIN);
-    lv_obj_set_style_border_width(s_popup, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(s_popup, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *panel = lv_obj_create(s_popup);
-    lv_obj_set_size(panel, imin(216, scrW() - 10), LV_SIZE_CONTENT);
-    lv_obj_set_style_max_height(panel, scrH() - 20, LV_PART_MAIN);
-    lv_obj_center(panel);
-    lv_obj_set_style_bg_color(panel, lv_color_hex(0x1c2530), LV_PART_MAIN);
-    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(panel, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_t *t = lv_label_create(panel);
-    lv_label_set_text(t, title);
-    lv_obj_set_style_text_color(t, lv_color_hex(0xFFD400), LV_PART_MAIN);
-    lv_obj_set_style_text_font(t, &lv_font_montserrat_16, LV_PART_MAIN);
-
-    lv_obj_t *m = lv_label_create(panel);
-    lv_label_set_text(m, body);
-    lv_label_set_long_mode(m, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(m, LV_PCT(100));
-    lv_obj_set_style_text_align(m, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_text_color(m, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
-    lv_obj_set_style_text_font(m, &lv_font_montserrat_20, LV_PART_MAIN);
-
-    if (okbtn)
-    {
-        lv_obj_t *ok = lv_button_create(panel);
-        lv_obj_add_event_cb(ok, popup_ok_cb, LV_EVENT_CLICKED, NULL);
-        lv_obj_t *l = lv_label_create(ok);
-        lv_label_set_text(l, "OK");
-        lv_obj_center(l);
-    }
 }
 
 // --- Terminál rajzolása (egyedi LVGL draw) ---------------------------------
@@ -301,99 +240,6 @@ static void settings_save_cb(lv_event_t *)
 
 static void settings_cancel_cb(lv_event_t *) { close_settings(); }
 
-// --- Bluetooth panel -------------------------------------------------------
-
-static lv_obj_t *s_bt_overlay = nullptr;
-static lv_obj_t *s_bt_status = nullptr;
-
-static void bt_refresh_status()
-{
-    if (!s_bt_status)
-        return;
-    if (bt_connected())
-        lv_label_set_text_fmt(s_bt_status,
-                              "Status: CONNECTED\nPaired devices: %d",
-                              bt_bond_count());
-    else
-        lv_label_set_text_fmt(s_bt_status,
-                              "Status: advertising\nName: %s\nPaired devices: %d",
-                              BT_NAME, bt_bond_count());
-}
-
-static void close_bt()
-{
-    if (s_bt_overlay)
-    {
-        lv_obj_delete(s_bt_overlay);
-        s_bt_overlay = nullptr;
-        s_bt_status = nullptr;
-    }
-}
-
-static void bt_close_cb(lv_event_t *) { close_bt(); }
-static void bt_repair_cb(lv_event_t *)
-{
-    bt_repair();
-    bt_refresh_status();
-}
-static void bt_unpair_cb(lv_event_t *)
-{
-    bt_unpair_all();
-    bt_refresh_status();
-}
-
-static void bt_full_btn(lv_obj_t *parent, const char *txt, lv_event_cb_t cb)
-{
-    lv_obj_t *b = lv_button_create(parent);
-    lv_obj_set_width(b, LV_PCT(100));
-    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *l = lv_label_create(b);
-    lv_label_set_text(l, txt);
-    lv_obj_center(l);
-}
-
-static void show_bt()
-{
-    if (s_bt_overlay)
-        return;
-
-    s_bt_overlay = lv_obj_create(lv_layer_top());
-    lv_obj_set_size(s_bt_overlay, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(s_bt_overlay, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_bt_overlay, LV_OPA_60, LV_PART_MAIN);
-    lv_obj_set_style_border_width(s_bt_overlay, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(s_bt_overlay, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *panel = lv_obj_create(s_bt_overlay);
-    lv_obj_set_size(panel, imin(224, scrW() - 10), imin(290, scrH() - 10));
-    lv_obj_center(panel);
-    lv_obj_set_style_bg_color(panel, lv_color_hex(0x1c2530), LV_PART_MAIN);
-    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(panel, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_t *t = lv_label_create(panel);
-    lv_label_set_text(t, LV_SYMBOL_BLUETOOTH "  Bluetooth");
-    lv_obj_set_style_text_color(t, lv_color_hex(0x40A0FF), LV_PART_MAIN);
-    lv_obj_set_style_text_font(t, &lv_font_montserrat_16, LV_PART_MAIN);
-
-    s_bt_status = lv_label_create(panel);
-    lv_label_set_long_mode(s_bt_status, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(s_bt_status, LV_PCT(100));
-    lv_obj_set_style_text_color(s_bt_status, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
-    bt_refresh_status();
-
-    bt_full_btn(panel, "Re-pair", bt_repair_cb);
-    bt_full_btn(panel, "Clear pairing", bt_unpair_cb);
-    bt_full_btn(panel, "Close", bt_close_cb);
-}
-
-static void settings_bt_cb(lv_event_t *)
-{
-    close_settings();
-    show_bt();
-}
-
 // A szövegbeíró billentyuzet a beállításokból hívható elo.
 static void settings_keyboard_cb(lv_event_t *)
 {
@@ -466,7 +312,7 @@ static void show_settings()
     lv_label_set_text(lb4, "Orientation:");
     lv_obj_set_style_text_color(lb4, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
     dd_rot = lv_dropdown_create(panel);
-    lv_dropdown_set_options(dd_rot, "Portrait (39 cols)\nLandscape (52 cols)");
+    lv_dropdown_set_options(dd_rot, "Portrait (46 cols)\nLandscape (62 cols)");
     lv_dropdown_set_selected(dd_rot, cfg.rotation ? 1 : 0);
     lv_obj_set_width(dd_rot, LV_PCT(100));
 
@@ -485,14 +331,6 @@ static void show_settings()
     lv_obj_t *fnl = lv_label_create(fnbtn);
     lv_label_set_text(fnl, "Fn keys (arrows, Ctrl-C...)");
     lv_obj_center(fnl);
-
-    // Bluetooth (párosítás / újrapárosítás / törlés)
-    lv_obj_t *btbtn = lv_button_create(panel);
-    lv_obj_set_width(btbtn, LV_PCT(100));
-    lv_obj_add_event_cb(btbtn, settings_bt_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *btl = lv_label_create(btbtn);
-    lv_label_set_text(btl, LV_SYMBOL_BLUETOOTH "  Bluetooth");
-    lv_obj_center(btl);
 
     lv_obj_t *btnrow = lv_obj_create(panel);
     lv_obj_remove_style_all(btnrow);
@@ -603,14 +441,9 @@ static void term_press_cb(lv_event_t *e)
     }
 }
 
-// --- Eszköztár -------------------------------------------------------------
+// --- Felso sáv gombjai -----------------------------------------------------
 
 static void btn_cfg_cb(lv_event_t *) { show_settings(); }
-static void btn_clear_cb(lv_event_t *)
-{
-    vt.reset();
-    lv_obj_invalidate(term_obj);
-}
 static void btn_exit_cb(lv_event_t *) { return_to_launcher(); }
 
 static void apply_rotation()
@@ -630,11 +463,13 @@ static void display_force_on()
         esp_lcd_panel_disp_on_off(panel, true);
 }
 
-static void make_tool_btn(lv_obj_t *parent, const char *sym, lv_event_cb_t cb)
+// Kis ikon-gomb a felso sáv jobb oldalára (x = jobbszéltol mért eltolás).
+static void top_btn(lv_obj_t *parent, const char *sym, lv_event_cb_t cb, int x)
 {
     lv_obj_t *b = lv_button_create(parent);
-    lv_obj_set_flex_grow(b, 1);
-    lv_obj_set_height(b, LV_PCT(100));
+    lv_obj_set_size(b, 32, TOP_H - 2);
+    lv_obj_align(b, LV_ALIGN_TOP_RIGHT, x, 0);
+    lv_obj_set_style_pad_all(b, 0, LV_PART_MAIN);
     lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *l = lv_label_create(b);
     lv_label_set_text(l, sym);
@@ -650,16 +485,19 @@ static void build_ui()
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_pad_all(scr, 0, LV_PART_MAIN);
 
+    // Felso sáv: bal oldalt állapot, jobb oldalt beállítás + vissza gomb.
     status_lbl = lv_label_create(scr);
     lv_obj_set_style_text_color(status_lbl, lv_color_hex(0x6ff0a0), LV_PART_MAIN);
     lv_obj_set_style_text_font(status_lbl, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_obj_align(status_lbl, LV_ALIGN_TOP_LEFT, 4, 5);
+    lv_obj_align(status_lbl, LV_ALIGN_TOP_LEFT, 4, 4);
+    top_btn(scr, LV_SYMBOL_LEFT, btn_exit_cb, -2);      // vissza (legjobbszél)
+    top_btn(scr, LV_SYMBOL_SETTINGS, btn_cfg_cb, -38);  // beállítás
 
     // Terminál-objektum (egyedi rajzolás). Kis margó, hogy a szélso oszlopok/
     // sorok ne lógjanak le a kijelzorol.
     const int32_t PADH = 3, PADV = 2;
     const int32_t termW = W;
-    const int32_t termH = H - TOP_H - BAR_H;
+    const int32_t termH = H - TOP_H;
     term_obj = lv_obj_create(scr);
     lv_obj_remove_style_all(term_obj);
     lv_obj_set_pos(term_obj, 0, TOP_H);
@@ -678,21 +516,6 @@ static void build_ui()
 
     // A rács mérete a (paddinggal csökkentett) tartalom-területbol.
     vt.resize((termW - 2 * PADH) / CELL_W, (termH - 2 * PADV) / CELL_H);
-
-    // Eszköztár
-    lv_obj_t *bar = lv_obj_create(scr);
-    lv_obj_remove_style_all(bar);
-    lv_obj_set_size(bar, W, BAR_H);
-    lv_obj_align(bar, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_flex_flow(bar, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(bar, 4, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(bar, 3, LV_PART_MAIN);
-    // A billentyuzet és az Fn billentyuk a ⚙ beállításokból hívhatók elo.
-    make_tool_btn(bar, LV_SYMBOL_SETTINGS, btn_cfg_cb);
-    make_tool_btn(bar, LV_SYMBOL_TRASH, btn_clear_cb);
-    make_tool_btn(bar, LV_SYMBOL_LEFT, btn_exit_cb);
 
     update_status();
 }
@@ -714,35 +537,8 @@ void setup()
     apply_rotation();
     build_ui();
 
-    bt_init(BT_NAME); // BLE bemenet + hirdetés
-
     vt.feedStr("VT100 terminal ready.\r\n");
-    vt.feedStr("Pi -> P1 port (TX=GPIO1, RX=GPIO3, GND).\r\n");
-    vt.feedStr("BT: " BT_NAME " (pair in Settings).\r\n\n");
-}
-
-// BLE párosítási visszajelzések kezelése (a fo loopból).
-static void bt_poll_ui()
-{
-    static uint32_t shownPk = 0;
-    uint32_t pk = bt_passkey();
-    if (pk && pk != shownPk)
-    {
-        shownPk = pk;
-        char b[64];
-        snprintf(b, sizeof(b), "Code:\n%06u\n\nEnter it on your device", (unsigned)pk);
-        show_popup("Bluetooth pairing", b, false);
-    }
-
-    bool ok;
-    if (bt_take_auth_result(&ok))
-    {
-        shownPk = 0;
-        close_popup();
-        show_popup("Bluetooth", ok ? "Paired successfully!" : "Pairing failed", true);
-        if (s_bt_status)
-            bt_refresh_status();
-    }
+    vt.feedStr("Pi -> P1 port (TX=GPIO1, RX=GPIO3, GND).\r\n\n");
 }
 
 static uint32_t last_tick = 0;
@@ -760,24 +556,6 @@ void loop()
         g_rebuild = false;
         rebuild_ui();
     }
-
-    // BLE-rol érkezo karakterek -> a Pi felé (mint a billentyuzet), ÉS helyben
-    // megjelenítve a CYD kijelzon. Csak nyomtathatót + sortörést echózunk, hogy
-    // az esetleges ESC/vezérlo-szekvenciák ne rontsák el a helyi terminálképet.
-    uint8_t bb[64];
-    int bn = bt_read(bb, sizeof(bb));
-    if (bn > 0)
-    {
-        Serial.write(bb, bn); // natúr a Pi felé
-        for (int i = 0; i < bn; i++)
-        {
-            uint8_t b = bb[i];
-            if ((b >= 0x20 && b < 0x7F) || b == '\n' || b == '\r' || b == '\t')
-                vt.feed(b); // helyi megjelenítés
-        }
-        vt.scrollToBottom();
-    }
-    bt_poll_ui();
 
     pump_serial();
 
