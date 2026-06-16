@@ -70,7 +70,9 @@ A panel BLE-perifériaként hirdeti magát **`CYD-Terminal`** néven, **Nordic U
 Service (NUS)** karakterisztikával. Bármely BLE soros terminál app (pl. *nRF
 Connect*, *Serial Bluetooth Terminal* BLE módban) csatlakozhat, és a beírt
 karakterek a terminálba (a Pi felé) mennek — mintha a képernyo-billentyuzeten
-gépelnél.
+gépelnél. A BT-n bevitt **nyomtatható karakterek a CYD kijelzon is megjelennek**
+(helyi echo; az ESC/vezérlo-szekvenciák csak a Pi felé mennek, hogy ne rontsák a
+helyi képet).
 
 ### Párosítás
 1. A telefonon csatlakozz a `CYD-Terminal`-hoz.

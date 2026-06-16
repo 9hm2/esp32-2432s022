@@ -737,12 +737,20 @@ void loop()
         rebuild_ui();
     }
 
-    // BLE-rol érkezo karakterek -> a Pi felé (mint a billentyuzet).
+    // BLE-rol érkezo karakterek -> a Pi felé (mint a billentyuzet), ÉS helyben
+    // megjelenítve a CYD kijelzon. Csak nyomtathatót + sortörést echózunk, hogy
+    // az esetleges ESC/vezérlo-szekvenciák ne rontsák el a helyi terminálképet.
     uint8_t bb[64];
     int bn = bt_read(bb, sizeof(bb));
     if (bn > 0)
     {
-        Serial.write(bb, bn);
+        Serial.write(bb, bn); // natúr a Pi felé
+        for (int i = 0; i < bn; i++)
+        {
+            uint8_t b = bb[i];
+            if ((b >= 0x20 && b < 0x7F) || b == '\n' || b == '\r' || b == '\t')
+                vt.feed(b); // helyi megjelenítés
+        }
         vt.scrollToBottom();
     }
     bt_poll_ui();
