@@ -76,8 +76,6 @@ OtaResult ota_flash_app(const AppEntry &app, ota_progress_cb_t cb, void *ctx)
 
     while (written < total)
     {
-        Serial.printf("\nR@%u ", (unsigned)written); // OLVASÁS elott (diagnosztika)
-        Serial.flush();
         int n = f.read(s_buf, CHUNK);
         if (n < 0)
         {
@@ -88,23 +86,18 @@ OtaResult ota_flash_app(const AppEntry &app, ota_progress_cb_t cb, void *ctx)
         if (n == 0)
             break; // fájl vége a vártnál korábban
 
-        Serial.printf("W%d ", n); // ÍRÁS elott
-        Serial.flush();
         if (esp_ota_write(handle, s_buf, n) != ESP_OK)
         {
             esp_ota_abort(handle);
             f.close();
             return OTA_ERR_WRITE;
         }
-        Serial.print("ok"); // ÍRÁS kész
-        Serial.flush();
 
         written += n;
         if (cb)
             cb(written, total, ctx);
 
-        // Yield a rendszernek: a hosszú, blokkoló flashelés alatt fut az idle
-        // task is, így a watchdog nem dobja el (nagy, ~1MB+ image-nél fontos).
+        // Yield a rendszernek (idle task fut, watchdog etetve a hosszú flashnél).
         delay(1);
     }
 

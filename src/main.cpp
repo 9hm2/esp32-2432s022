@@ -65,33 +65,28 @@ static void onAppSelected(const AppEntry &app)
     flash_requested = true;
 }
 
-// OTA folyamat -> CSAK soros kiírás (a kijelzohöz flashelés közben NEM nyúlunk,
-// mert az LVGL flush a kijelzo-DMA-ra várna, amit a flash-írások kiéheztetnek).
+// OTA folyamat -> folyamatjelzo frissítése (csak ha változott a százalék).
 static void onFlashProgress(uint32_t written, uint32_t total, void *)
 {
-    static uint32_t lastKB = 0;
-    uint32_t kb = written / 1024;
-    if (kb - lastKB >= 32 || written >= total)
-    {
-        lastKB = kb;
-        Serial.printf("OTA %u / %u KB\n", (unsigned)kb, (unsigned)(total / 1024));
-    }
+    uint8_t pct = total ? (uint8_t)(((uint64_t)written * 100) / total) : 0;
+    static int lastPct = -1;
+    if ((int)pct == lastPct)
+        return;
+    lastPct = pct;
+    char buf[48];
+    snprintf(buf, sizeof(buf), "%u%%  (%u/%u KB)", pct,
+             (unsigned)(written / 1024), (unsigned)(total / 1024));
+    launcher_ui_progress_update(pct, buf);
 }
 
 // A kért app beírása az ota_0-ba és átindítás rá (a loop()-ból hívva).
 static void doFlashAndBoot()
 {
     Serial.printf("Flashing: %s ...\n", pending_app.path.c_str());
-    // Statikus üzenet (egyszer kirajzolva); flashelés alatt nincs több render.
-    launcher_ui_progress_begin("Flashing app...\nplease wait, do not power off");
-
-    // Háttérvilágítás le flashelés idejére: csökkenti a csúcsáramot (brownout
-    // ellen), és kevesebb kijelzo-aktivitás a flash-írások mellett.
-    smartdisplay_lcd_set_backlight(0.0f);
+    launcher_ui_progress_begin("Flashing app...");
 
     OtaResult r = ota_flash_app(pending_app, onFlashProgress, nullptr);
 
-    smartdisplay_lcd_set_backlight(0.6f); // vissza (hibánál látszódjon)
     launcher_ui_progress_end();
 
     if (r == OTA_OK)
