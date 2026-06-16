@@ -13,6 +13,7 @@ void config_load(TermConfig &c)
     c.baud = prefs.getULong("baud", 115200);
     c.lineEnding = prefs.getUChar("le", 1); // alapból LF
     c.localEcho = prefs.getBool("echo", false);
+    c.rotation = prefs.getUChar("rot", 0); // alapból álló
     prefs.end();
 }
 
@@ -22,6 +23,7 @@ void config_save(const TermConfig &c)
     prefs.putULong("baud", c.baud);
     prefs.putUChar("le", c.lineEnding);
     prefs.putBool("echo", c.localEcho);
+    prefs.putUChar("rot", c.rotation);
     prefs.end();
 }
 

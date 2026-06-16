@@ -34,6 +34,16 @@ static lv_obj_t *set_overlay = nullptr;
 static lv_obj_t *dd_baud = nullptr;
 static lv_obj_t *dd_le = nullptr;
 static lv_obj_t *sw_echo = nullptr;
+static lv_obj_t *dd_rot = nullptr;
+
+static bool g_rebuild = false; // tájolás-váltáskor a loop()-ban építjük újra a UI-t
+
+// Az aktuális (tájolás szerinti) képernyoméret.
+static int32_t scrW() { return lv_display_get_horizontal_resolution(NULL); }
+static int32_t scrH() { return lv_display_get_vertical_resolution(NULL); }
+static int32_t imin(int32_t a, int32_t b) { return a < b ? a : b; }
+
+static void build_ui();
 
 // --- Terminál-puffer -------------------------------------------------------
 static String termBuf;
@@ -153,19 +163,26 @@ static void show_keyboard()
     if (kb_overlay)
         return;
 
+    const int32_t W = scrW();
+    const int32_t H = scrH();
+    int32_t ovH = (H * 7) / 10; // a képernyo ~70%-a
+    if (ovH < 150)
+        ovH = 150;
+    const int32_t inH = 36;
+
     kb_overlay = lv_obj_create(lv_layer_top());
     lv_obj_remove_style_all(kb_overlay);
-    lv_obj_set_size(kb_overlay, 240, 200);
+    lv_obj_set_size(kb_overlay, W, ovH);
     lv_obj_align(kb_overlay, LV_ALIGN_BOTTOM_MID, 0, 0);
 
     input_ta = lv_textarea_create(kb_overlay);
     lv_textarea_set_one_line(input_ta, true);
     lv_textarea_set_placeholder_text(input_ta, "parancs...");
-    lv_obj_set_size(input_ta, 240, 38);
+    lv_obj_set_size(input_ta, W, inH);
     lv_obj_align(input_ta, LV_ALIGN_TOP_MID, 0, 0);
 
     lv_obj_t *kb = lv_keyboard_create(kb_overlay);
-    lv_obj_set_size(kb, 240, 158);
+    lv_obj_set_size(kb, W, ovH - inH);
     lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_keyboard_set_textarea(kb, input_ta);
     lv_obj_add_event_cb(kb, kb_event_cb, LV_EVENT_READY, NULL);
@@ -180,20 +197,27 @@ static void close_settings()
     {
         lv_obj_delete(set_overlay);
         set_overlay = nullptr;
-        dd_baud = dd_le = sw_echo = nullptr;
+        dd_baud = dd_le = sw_echo = dd_rot = nullptr;
     }
 }
 
 static void settings_save_cb(lv_event_t *)
 {
+    uint8_t oldRot = cfg.rotation;
+
     cfg.baud = BAUD_OPTIONS[lv_dropdown_get_selected(dd_baud)];
     cfg.lineEnding = (uint8_t)lv_dropdown_get_selected(dd_le);
     cfg.localEcho = lv_obj_has_state(sw_echo, LV_STATE_CHECKED);
+    cfg.rotation = (uint8_t)lv_dropdown_get_selected(dd_rot);
 
     config_save(cfg);
     Serial.updateBaudRate(cfg.baud); // azonnali alkalmazás
-    update_status();
     close_settings();
+
+    if (cfg.rotation != oldRot)
+        g_rebuild = true; // a tájolás-váltást a loop()-ban végezzük
+    else
+        update_status();
 }
 
 static void settings_cancel_cb(lv_event_t *) { close_settings(); }
@@ -212,7 +236,7 @@ static void show_settings()
     lv_obj_clear_flag(set_overlay, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *panel = lv_obj_create(set_overlay);
-    lv_obj_set_size(panel, 224, 300);
+    lv_obj_set_size(panel, imin(224, scrW() - 10), imin(300, scrH() - 10));
     lv_obj_center(panel);
     lv_obj_set_style_bg_color(panel, lv_color_hex(0x1c2530), LV_PART_MAIN);
     lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
@@ -256,6 +280,15 @@ static void show_settings()
     if (cfg.localEcho)
         lv_obj_add_state(sw_echo, LV_STATE_CHECKED);
 
+    // Tájolás
+    lv_obj_t *lb4 = lv_label_create(panel);
+    lv_label_set_text(lb4, "Tajolas:");
+    lv_obj_set_style_text_color(lb4, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
+    dd_rot = lv_dropdown_create(panel);
+    lv_dropdown_set_options(dd_rot, "Allo (29 oszlop)\nFekvo (40 oszlop)");
+    lv_dropdown_set_selected(dd_rot, cfg.rotation ? 1 : 0);
+    lv_obj_set_width(dd_rot, LV_PCT(100));
+
     // Gombok
     lv_obj_t *btnrow = lv_obj_create(panel);
     lv_obj_remove_style_all(btnrow);
@@ -286,6 +319,24 @@ static void btn_clear_cb(lv_event_t *)
 }
 static void btn_exit_cb(lv_event_t *) { return_to_launcher(); }
 
+// A tájolás beállítása a configból.
+static void apply_rotation()
+{
+    lv_display_set_rotation(lv_display_get_default(),
+                            cfg.rotation ? LV_DISPLAY_ROTATION_90
+                                         : LV_DISPLAY_ROTATION_0);
+}
+
+// A teljes fo-UI újraépítése az új tájolással (a loop()-ból hívva).
+static void rebuild_ui()
+{
+    apply_rotation();
+    lv_obj_clean(lv_screen_active()); // a régi term_ta/status/bar törlése
+    build_ui();
+    lv_textarea_set_text(term_ta, termBuf.c_str());
+    lv_textarea_set_cursor_pos(term_ta, LV_TEXTAREA_CURSOR_LAST);
+}
+
 static lv_obj_t *make_tool_btn(lv_obj_t *parent, const char *sym, lv_event_cb_t cb)
 {
     lv_obj_t *b = lv_button_create(parent);
@@ -300,6 +351,11 @@ static lv_obj_t *make_tool_btn(lv_obj_t *parent, const char *sym, lv_event_cb_t 
 
 static void build_ui()
 {
+    const int32_t W = scrW();
+    const int32_t H = scrH();
+    const int32_t BAR_H = 40;
+    const int32_t TOP_H = 24;
+
     lv_obj_t *scr = lv_screen_active();
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x0a0e12), LV_PART_MAIN);
     lv_obj_set_style_pad_all(scr, 0, LV_PART_MAIN);
@@ -312,8 +368,8 @@ static void build_ui()
 
     // Terminál-kimenet (read-only, monospace)
     term_ta = lv_textarea_create(scr);
-    lv_obj_set_pos(term_ta, 0, 24);
-    lv_obj_set_size(term_ta, 240, 254);
+    lv_obj_set_pos(term_ta, 0, TOP_H);
+    lv_obj_set_size(term_ta, W, H - TOP_H - BAR_H);
     lv_obj_remove_flag(term_ta, LV_OBJ_FLAG_CLICKABLE); // ne lehessen szerkeszteni
     lv_textarea_set_cursor_click_pos(term_ta, false);
     lv_obj_set_style_bg_color(term_ta, lv_color_hex(0x000000), LV_PART_MAIN);
@@ -328,7 +384,7 @@ static void build_ui()
     // Alsó eszköztár
     lv_obj_t *bar = lv_obj_create(scr);
     lv_obj_remove_style_all(bar);
-    lv_obj_set_size(bar, 240, 40);
+    lv_obj_set_size(bar, W, BAR_H);
     lv_obj_align(bar, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_set_flex_flow(bar, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
@@ -352,7 +408,7 @@ void setup()
     Serial.begin(cfg.baud);
 
     smartdisplay_init();
-    lv_display_set_rotation(lv_display_get_default(), LV_DISPLAY_ROTATION_0);
+    apply_rotation(); // a configban tárolt tájolás (álló/fekvo)
     build_ui();
 
     termBuf.reserve(TERM_MAX + 64);
@@ -368,6 +424,12 @@ void loop()
     uint32_t now = millis();
     lv_tick_inc(now - last_tick);
     last_tick = now;
+
+    if (g_rebuild)
+    {
+        g_rebuild = false;
+        rebuild_ui();
+    }
 
     pump_serial();
     term_flush();
