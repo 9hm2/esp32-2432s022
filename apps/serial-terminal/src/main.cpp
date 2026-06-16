@@ -318,8 +318,12 @@ static void build_ui()
     lv_textarea_set_cursor_click_pos(term_ta, false);
     lv_obj_set_style_bg_color(term_ta, lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_text_color(term_ta, lv_color_hex(0xC8F0C8), LV_PART_MAIN);
+    // UNSCII 8x8: a legkisebb beepitett monospace font. A terkozok nullazasaval
+    // es minimalis paddinggel ~29 oszlop x ~30 sor fer ki (240x254 px teruleten).
     lv_obj_set_style_text_font(term_ta, &lv_font_unscii_8, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(term_ta, 3, LV_PART_MAIN);
+    lv_obj_set_style_text_line_space(term_ta, 0, LV_PART_MAIN);
+    lv_obj_set_style_text_letter_space(term_ta, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(term_ta, 2, LV_PART_MAIN);
 
     // Alsó eszköztár
     lv_obj_t *bar = lv_obj_create(scr);

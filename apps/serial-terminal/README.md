@@ -44,6 +44,15 @@ pio run
 Majd a panelon a launcherbol válaszd ki — beflashel az `ota_0`-ba és elindul.
 RESET vagy a ⟵ gomb visszavisz a launcherbe.
 
+## Karaktersűrűség (kis kijelzo)
+
+- A font **UNSCII 8×8** — az LVGL-be épített **legkisebb monospace** font.
+- Térközök nullázva, minimális padding → **álló módban ~29 oszlop × ~30 sor**
+  fér ki a 240×254 px-es terminálablakban.
+- **Fekvo módban (landscape) ~40 oszlop × ~22 sor** lenne (szélesebb sorok). Ha
+  ezt szeretnéd, a `lv_display_set_rotation(...LANDSCAPE...)` + a UI méretek
+  átállítása kell — szólj, és átkapcsolom (vagy beállítássá teszem).
+
 ## Korlátok
 
 - Nem teljes VT100-emuláció: az escape-szekvenciákat **eldobja** (nem értelmezi a
