@@ -11,7 +11,6 @@
 #include <Arduino.h>
 #include <esp32_smartdisplay.h>
 #include <esp_lcd_panel_ops.h>
-#include <esp_heap_caps.h>
 
 #include "config.h"
 #include "launcher_return.h"
@@ -535,18 +534,6 @@ void setup()
 
     smartdisplay_init();
     display_force_on();
-
-    // Dupla rajzbuffer: a smartdisplay alapból EGY buffert állít be, így az LVGL
-    // minden chunk után megvárja a flush-t. Két DMA-képes bufferrel a render és a
-    // flush átlapolható -> jóval simább frissítés.
-    {
-        lv_display_t *disp = lv_display_get_default();
-        size_t bytes = LVGL_BUFFER_PIXELS * sizeof(lv_color_t);
-        void *b1 = heap_caps_malloc(bytes, LVGL_BUFFER_MALLOC_FLAGS);
-        void *b2 = heap_caps_malloc(bytes, LVGL_BUFFER_MALLOC_FLAGS);
-        if (b1 && b2)
-            lv_display_set_buffers(disp, b1, b2, bytes, LV_DISPLAY_RENDER_MODE_PARTIAL);
-    }
 
     apply_rotation();
     build_ui();
