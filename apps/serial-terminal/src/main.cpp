@@ -10,6 +10,7 @@
 
 #include <Arduino.h>
 #include <esp32_smartdisplay.h>
+#include <esp_lcd_panel_ops.h>
 
 #include "bt_input.h"
 #include "config.h"
@@ -616,6 +617,16 @@ static void apply_rotation()
                                          : LV_DISPLAY_ROTATION_0);
 }
 
+// Néhány ESP32-2432S022C panelnél a kijelzot expliciten be kell kapcsolni
+// (DISPON) az init után, különben csak fehér hátteret látni (nincs kép).
+static void display_force_on()
+{
+    auto *panel = (esp_lcd_panel_handle_t)lv_display_get_user_data(
+        lv_display_get_default());
+    if (panel)
+        esp_lcd_panel_disp_on_off(panel, true);
+}
+
 static void make_tool_btn(lv_obj_t *parent, const char *sym, lv_event_cb_t cb)
 {
     lv_obj_t *b = lv_button_create(parent);
@@ -689,6 +700,7 @@ void setup()
     Serial.begin(cfg.baud); // UART0 a Pi felé (P1: TX=GPIO1, RX=GPIO3)
 
     smartdisplay_init();
+    display_force_on();
     apply_rotation();
     build_ui();
 

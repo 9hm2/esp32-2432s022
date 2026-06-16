@@ -7,12 +7,24 @@
 #include <Arduino.h>
 #include <SD.h>
 #include <esp32_smartdisplay.h>
+#include <esp_lcd_panel_ops.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 
 #include "ota_runner.h"
 #include "sd_apps.h"
 #include "ui/launcher_ui.h"
+
+// Néhány ESP32-2432S022C panelnél a kijelzot az init után expliciten be kell
+// kapcsolni (DISPON), különben csak fehér hátteret látni (háttérvilágítás, nincs
+// kép). A smartdisplay a panel handle-t a display user_data-jában tárolja.
+static void display_force_on()
+{
+    auto *panel = (esp_lcd_panel_handle_t)lv_display_get_user_data(
+        lv_display_get_default());
+    if (panel)
+        esp_lcd_panel_disp_on_off(panel, true);
+}
 
 // A panel SD-kártya CS lába (board: TF_CS = GPIO5).
 static constexpr uint8_t SD_CS = 5;
@@ -98,6 +110,7 @@ void setup()
 
     // Kijelző + touch + LVGL
     smartdisplay_init();
+    display_force_on();
     lv_display_set_rotation(lv_display_get_default(), LV_DISPLAY_ROTATION_0);
     launcher_ui_init();
 

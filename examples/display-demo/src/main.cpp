@@ -13,6 +13,7 @@
 
 #include <Arduino.h>
 #include <esp32_smartdisplay.h>
+#include <esp_lcd_panel_ops.h>
 
 static lv_obj_t *counter_label;   // gomb megnyomások száma
 static lv_obj_t *status_label;    // futásidejű állapot (heap, uptime)
@@ -102,8 +103,16 @@ void setup(void)
     // Kijelző + touch inicializálás (50%-os fenyerovel indul)
     smartdisplay_init();
 
-    // Alapertelmezett tajolas: portrait (240x320 allo)
+    // Néhány 2432S022C panelnél a kijelzot expliciten be kell kapcsolni (DISPON),
+    // különben csak fehér hátteret látni (nincs kép).
     lv_display_t *display = lv_display_get_default();
+    {
+        auto *panel = (esp_lcd_panel_handle_t)lv_display_get_user_data(display);
+        if (panel)
+            esp_lcd_panel_disp_on_off(panel, true);
+    }
+
+    // Alapertelmezett tajolas: portrait (240x320 allo)
     lv_display_set_rotation(display, LV_DISPLAY_ROTATION_0);
 
     build_ui();

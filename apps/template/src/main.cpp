@@ -9,8 +9,19 @@
 
 #include <Arduino.h>
 #include <esp32_smartdisplay.h>
+#include <esp_lcd_panel_ops.h>
 
 #include "launcher_return.h"
+
+// Néhány ESP32-2432S022C panelnél a kijelzot az init után expliciten be kell
+// kapcsolni (DISPON), különben csak fehér hátteret látni (nincs kép).
+static void display_force_on()
+{
+    auto *panel = (esp_lcd_panel_handle_t)lv_display_get_user_data(
+        lv_display_get_default());
+    if (panel)
+        esp_lcd_panel_disp_on_off(panel, true);
+}
 
 static void back_btn_cb(lv_event_t *)
 {
@@ -59,6 +70,7 @@ void setup()
     // RESET-es rollback (vissza a launcherhez) is mukodjon.
 
     smartdisplay_init();
+    display_force_on();
     lv_display_set_rotation(lv_display_get_default(), LV_DISPLAY_ROTATION_0);
     build_ui();
 }
