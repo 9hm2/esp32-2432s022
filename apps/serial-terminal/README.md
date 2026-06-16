@@ -91,11 +91,12 @@ helyi képet).
 
 ## Karaktersűrűség (kis kijelzo)
 
-- A font **UNSCII 8×8** — az LVGL-be épített **legkisebb monospace** font.
-- Térközök nullázva, minimális padding → **álló módban ~29 oszlop × ~30 sor**
-  fér ki a 240×254 px-es terminálablakban.
-- **Fekvo módban ~40 oszlop × ~22 sor** (szélesebb sorok). A tájolás a
-  **Beállítások** (⚙) menüben váltható, NVS-be mentve.
+- A font egy **kis monospace** (DejaVu Sans Mono, 9 px, bpp4 antialias),
+  cellaméret **6×10 px** — keskenyebb az UNSCII 8×8-nál, így több oszlop fér ki.
+  A fontot az `src/term_font.c` tartalmazza (generálva `lv_font_conv`-val).
+- **Álló módban ~39 oszlop × ~25 sor**, kis margóval (a szélso oszlop sem lóg le).
+- **Fekvo módban ~52 oszlop × ~21 sor**. A tájolás a **Beállítások** (⚙)
+  menüben váltható, NVS-be mentve.
 
 ## Korlátok
 

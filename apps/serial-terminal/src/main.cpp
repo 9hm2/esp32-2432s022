@@ -22,8 +22,11 @@
 static TermConfig cfg;
 static Vt100 vt;
 
-// Cella méret = az UNSCII 8x8 font.
-static constexpr int CELL = 8;
+// Kis monospace font (DejaVu Sans Mono, 9px) — keskenyebb, mint az UNSCII 8x8,
+// így több oszlop fér ki. Cella: 6 px széles x 10 px magas (a font line_height-ja).
+extern const lv_font_t term_font;
+static constexpr int CELL_W = 6;
+static constexpr int CELL_H = 10;
 static constexpr int TOP_H = 24; // állapotsor
 static constexpr int BAR_H = 40; // eszköztár
 
@@ -134,7 +137,7 @@ static void term_draw_cb(lv_event_t *e)
 
     lv_draw_letter_dsc_t ld;
     lv_draw_letter_dsc_init(&ld);
-    ld.font = &lv_font_unscii_8;
+    ld.font = &term_font;
     ld.opa = LV_OPA_COVER;
 
     const bool live = (vt.scroll() == 0);
@@ -158,13 +161,13 @@ static void term_draw_cb(lv_event_t *e)
                 bg = t;
             }
 
-            const int32_t cx = ox + x * CELL, cy = oy + y * CELL;
+            const int32_t cx = ox + x * CELL_W, cy = oy + y * CELL_H;
 
             // Háttér: csak ha nem az alap (fekete), vagy invertált/kurzor.
             if (inv || !(c.flags & VT_BG_DEF))
             {
                 rd.bg_color = bg;
-                lv_area_t ca = {cx, cy, cx + CELL - 1, cy + CELL - 1};
+                lv_area_t ca = {cx, cy, cx + CELL_W - 1, cy + CELL_H - 1};
                 lv_draw_rect(layer, &rd, &ca);
             }
 
@@ -463,7 +466,7 @@ static void show_settings()
     lv_label_set_text(lb4, "Orientation:");
     lv_obj_set_style_text_color(lb4, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
     dd_rot = lv_dropdown_create(panel);
-    lv_dropdown_set_options(dd_rot, "Portrait (29 cols)\nLandscape (40 cols)");
+    lv_dropdown_set_options(dd_rot, "Portrait (39 cols)\nLandscape (52 cols)");
     lv_dropdown_set_selected(dd_rot, cfg.rotation ? 1 : 0);
     lv_obj_set_width(dd_rot, LV_PCT(100));
 
@@ -593,7 +596,7 @@ static void term_press_cb(lv_event_t *e)
     }
     else // PRESSING
     {
-        int lines = (p.y - s_dragY) / CELL; // lefelé húzás -> régebbi sorok
+        int lines = (p.y - s_dragY) / CELL_H; // lefelé húzás -> régebbi sorok
         vt.setScroll(s_dragScroll + lines);
         update_status();
         lv_obj_invalidate(term_obj);
@@ -652,7 +655,9 @@ static void build_ui()
     lv_obj_set_style_text_font(status_lbl, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_align(status_lbl, LV_ALIGN_TOP_LEFT, 4, 5);
 
-    // Terminál-objektum (egyedi rajzolás)
+    // Terminál-objektum (egyedi rajzolás). Kis margó, hogy a szélso oszlopok/
+    // sorok ne lógjanak le a kijelzorol.
+    const int32_t PADH = 3, PADV = 2;
     const int32_t termW = W;
     const int32_t termH = H - TOP_H - BAR_H;
     term_obj = lv_obj_create(scr);
@@ -661,13 +666,18 @@ static void build_ui()
     lv_obj_set_size(term_obj, termW, termH);
     lv_obj_set_style_bg_color(term_obj, Vt100::defaultBg(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(term_obj, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_pad_left(term_obj, PADH, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(term_obj, PADH, LV_PART_MAIN);
+    lv_obj_set_style_pad_top(term_obj, PADV, LV_PART_MAIN);
+    lv_obj_set_style_pad_bottom(term_obj, PADV, LV_PART_MAIN);
     lv_obj_clear_flag(term_obj, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(term_obj, LV_OBJ_FLAG_CLICKABLE); // húzás-görgetéshez
     lv_obj_add_event_cb(term_obj, term_draw_cb, LV_EVENT_DRAW_MAIN_END, NULL);
     lv_obj_add_event_cb(term_obj, term_press_cb, LV_EVENT_PRESSED, NULL);
     lv_obj_add_event_cb(term_obj, term_press_cb, LV_EVENT_PRESSING, NULL);
 
-    vt.resize(termW / CELL, termH / CELL);
+    // A rács mérete a (paddinggal csökkentett) tartalom-területbol.
+    vt.resize((termW - 2 * PADH) / CELL_W, (termH - 2 * PADV) / CELL_H);
 
     // Eszköztár
     lv_obj_t *bar = lv_obj_create(scr);
