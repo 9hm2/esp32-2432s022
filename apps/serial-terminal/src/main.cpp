@@ -19,11 +19,13 @@
 static TermConfig cfg;
 static Vt100 vt;
 
-// Kis monospace font (DejaVu Sans Mono, 8px, szoros sor) — keskeny, sok fér ki.
-// Cella: 5 px széles x 8 px magas (= a font line_height-ja a tömör igazításhoz).
+// Kis monospace font (DejaVu Sans Mono, 8px, bpp1, advance 5px-re fixálva).
+// Cella: 5 px széles x 10 px magas (= a font line_height-ja -> nincs sor-átfedés).
+// A renderelés FUTAM-ALAPÚ: egy soron belül az azonos szín/attribútumú cellákat
+// EGY lv_draw_label-lel rajzoljuk (nem cellánként) -> sokkal kevesebb rajzfeladat.
 extern const lv_font_t term_font;
 static constexpr int CELL_W = 5;
-static constexpr int CELL_H = 8;
+static constexpr int CELL_H = 10;
 static constexpr int TOP_H = 22; // felso sáv (állapot + gombok)
 
 // --- UI elemek -------------------------------------------------------------
@@ -70,53 +72,91 @@ static void term_draw_cb(lv_event_t *e)
     lv_obj_get_content_coords(obj, &area);
     const int32_t ox = area.x1, oy = area.y1;
 
+    // Csak a vágási területbe eso sorokra/oszlopokra dolgozunk.
+    const lv_area_t clip = layer->_clip_area;
+    int y0 = (clip.y1 - oy) / CELL_H, y1 = (clip.y2 - oy) / CELL_H;
+    int x0 = (clip.x1 - ox) / CELL_W, x1 = (clip.x2 - ox) / CELL_W;
+    if (y0 < 0) y0 = 0;
+    if (x0 < 0) x0 = 0;
+    if (y1 >= vt.rows()) y1 = vt.rows() - 1;
+    if (x1 >= vt.cols()) x1 = vt.cols() - 1;
+
     lv_draw_rect_dsc_t rd;
     lv_draw_rect_dsc_init(&rd);
     rd.bg_opa = LV_OPA_COVER;
 
-    lv_draw_letter_dsc_t ld;
-    lv_draw_letter_dsc_init(&ld);
+    lv_draw_label_dsc_t ld;
+    lv_draw_label_dsc_init(&ld);
     ld.font = &term_font;
     ld.opa = LV_OPA_COVER;
+    ld.letter_space = 0;
 
     const bool live = (vt.scroll() == 0);
-    for (int y = 0; y < vt.rows(); y++)
-    {
-        for (int x = 0; x < vt.cols(); x++)
-        {
-            const VtCell &c = vt.viewCell(x, y); // scrollback-figyelo
-            lv_color_t fg = (c.flags & VT_FG_DEF) ? Vt100::defaultFg()
-                                                  : Vt100::palette(c.fg);
-            lv_color_t bg = (c.flags & VT_BG_DEF) ? Vt100::defaultBg()
-                                                  : Vt100::palette(c.bg);
-            bool inv = (c.flags & VT_INVERSE) != 0;
-            if (live && vt.cursorVisible() && x == vt.curX() && y == vt.curY())
-                inv = !inv; // kurzor csak élo nézetben
+    char run[VT_MAX_COLS + 1];
 
-            if (inv)
+    for (int y = y0; y <= y1; y++)
+    {
+        const int32_t cy = oy + y * CELL_H;
+        int x = x0;
+        while (x <= x1)
+        {
+            // A cella effektív szín-állapota (inverz/kurzor figyelembevételével).
+            auto cellColors = [&](int cx, lv_color_t &fg, lv_color_t &bg) {
+                const VtCell &c = vt.viewCell(cx, y);
+                fg = (c.flags & VT_FG_DEF) ? Vt100::defaultFg() : Vt100::palette(c.fg);
+                bg = (c.flags & VT_BG_DEF) ? Vt100::defaultBg() : Vt100::palette(c.bg);
+                bool inv = (c.flags & VT_INVERSE) != 0;
+                if (live && vt.cursorVisible() && cx == vt.curX() && y == vt.curY())
+                    inv = !inv;
+                if (inv) { lv_color_t t = fg; fg = bg; bg = t; }
+            };
+
+            lv_color_t fg, bg;
+            cellColors(x, fg, bg);
+
+            // Futam: azonos fg+bg egymás után (a clip-en belül).
+            int xe = x;
+            while (xe + 1 <= x1)
             {
-                lv_color_t t = fg;
-                fg = bg;
-                bg = t;
+                lv_color_t f2, b2;
+                cellColors(xe + 1, f2, b2);
+                if (!lv_color_eq(f2, fg) || !lv_color_eq(b2, bg))
+                    break;
+                xe++;
             }
 
-            const int32_t cx = ox + x * CELL_W, cy = oy + y * CELL_H;
+            const int32_t runX = ox + x * CELL_W;
+            const int runLen = xe - x + 1;
 
-            // Háttér: csak ha nem az alap (fekete), vagy invertált/kurzor.
-            if (inv || !(c.flags & VT_BG_DEF))
+            // Háttér a futamra (csak ha nem az alap fekete).
+            if (!lv_color_eq(bg, Vt100::defaultBg()))
             {
                 rd.bg_color = bg;
-                lv_area_t ca = {cx, cy, cx + CELL_W - 1, cy + CELL_H - 1};
+                lv_area_t ca = {runX, cy, runX + runLen * CELL_W - 1, cy + CELL_H - 1};
                 lv_draw_rect(layer, &rd, &ca);
             }
 
-            if (c.ch > ' ')
+            // A futam szövege egy label-lel; üres (csupa szóköz) futamot kihagyunk.
+            bool hasInk = false;
+            for (int i = 0; i < runLen; i++)
+            {
+                uint8_t ch = vt.viewCell(x + i, y).ch;
+                run[i] = (ch >= 0x20 && ch < 0x7F) ? (char)ch : ' ';
+                if (run[i] != ' ') hasInk = true;
+            }
+            run[runLen] = '\0';
+
+            if (hasInk)
             {
                 ld.color = fg;
-                ld.unicode = c.ch;
-                lv_point_t p = {cx, cy};
-                lv_draw_letter(layer, &ld, &p);
+                ld.text = run;
+                ld.text_length = runLen;
+                ld.text_local = 1; // az LVGL lemásolja a szöveget
+                lv_area_t la = {runX, cy, runX + runLen * CELL_W, cy + CELL_H - 1};
+                lv_draw_label(layer, &ld, &la);
             }
+
+            x = xe + 1;
         }
     }
 }
