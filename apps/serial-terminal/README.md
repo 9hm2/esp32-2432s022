@@ -16,18 +16,31 @@ képernyo-billentyuzetrol parancsot küldhetsz, és a beállítások perzisztens
   - kurzor mentés/visszaállítás (`s`/`u`), kurzor láthatóság (`?25h/l`).
 - **Egyedi LVGL rajzolás** kis monospace fonttal (elotér + háttér + inverz
   cellánként, blokk-kurzor).
-- **Scrollback** (80 sor): **húzd le/fel a terminált** a régi sorok
+- **Scrollback** (60 sor): **húzd le/fel a terminált** a régi sorok
   megtekintéséhez (scroll-lock: a nézet a helyén marad új adat érkezésekor is).
-- **Képernyo-billentyuzet** a parancsok küldéséhez (sorvégződéssel) — a
-  **Beállítások** (⚙) menüben a „Keyboard" gombbal hívható elo; alapból nem
-  jelenik meg (több hely a terminálnak).
-- **Fn billentyu-panel**: nyers byte-ok közvetlenül a Pi-nek —
-  **Esc, Tab, Ctrl-C/D/Z, nyilak (↑↓←→), Backspace, Enter** (interaktív
-  programokhoz: `nano`, `vim`, `htop`, `top`, shell job control). A
-  **Beállítások** (⚙) menüből hívható elo.
+- **Wi-Fi telnet bevitel:** az ESP a megadott hálózathoz csatlakozik (STA), és
+  egy **telnet szervert** (port 23) nyit. A telefonod/géped a **teljes
+  billentyuzetérol** gépelsz (`nc <ip> 23`, PuTTY, telnet app), az ESP a Pi-nek
+  továbbítja; a Pi kimenete a kijelzon ÉS a telnet kliensen is látszik.
+  Bekapcsolás: **Beállítások (⚙) → Wi-Fi telnet**.
+- **Képernyo-billentyuzet** és **Fn billentyu-panel** (nyilak/Ctrl stb.) szintén
+  a **Beállítások** (⚙) menübol — vésztartaléknak, ha nincs Wi-Fi.
 - **Beállítások** (⚙): **baud** (9600–230400), **sorvég** (nincs/LF/CRLF/CR),
-  **helyi echo**, **tájolás** (álló/fekvo) — NVS-be mentve.
-- A felso sávban jobb oldalt: **⚙ beállítás** és **⟵ vissza a launcherbe**.
+  **helyi echo**, **tájolás** (álló/fekvo), **Wi-Fi telnet** — NVS-be mentve.
+- A felso sáv jobb oldalán **⚙ beállítás** és **⟵ vissza**; Wi-Fi bekapcsolva a
+  bal oldal **váltogatva** mutatja a **port-beállításokat** és az **IP-címet**.
+
+## Wi-Fi telnet
+
+A hálózati adatok a `src/wifi_bridge.cpp`-ben (`WIFI_SSID` / `WIFI_PASS`).
+Bekapcsolás után a felso sáv kijelzi az IP-t; csatlakozz rá:
+
+```bash
+nc <ip> 23        # vagy: telnet <ip>, vagy PuTTY (raw/telnet, port 23)
+```
+
+A begépelt karakterek a Pi soros konzoljára mennek (a most használt RX/TX
+bekötéssel), tehát teljes billentyuzetrol vezérelheted a Pi-t.
 
 ## Bekötés a Raspberry Pi-hez (P1 port)
 

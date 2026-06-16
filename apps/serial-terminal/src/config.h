@@ -9,6 +9,7 @@ struct TermConfig
     uint8_t lineEnding; // 0=nincs, 1=LF(\n), 2=CRLF(\r\n), 3=CR(\r)
     bool localEcho;     // a beírt parancsot a saját kijelzon is mutassuk-e
     uint8_t rotation;   // 0=álló (240x320), 1=fekvo (320x240)
+    bool wifi;          // Wi-Fi telnet bevitel (AP + telnet szerver)
 };
 
 // Betöltés/mentés NVS-bol (Preferences, "serterm" névtér).

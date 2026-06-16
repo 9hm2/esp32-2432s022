@@ -15,6 +15,7 @@
 #include "config.h"
 #include "launcher_return.h"
 #include "vt100.h"
+#include "wifi_bridge.h"
 
 static TermConfig cfg;
 static Vt100 vt;
@@ -38,6 +39,7 @@ static lv_obj_t *dd_baud = nullptr;
 static lv_obj_t *dd_le = nullptr;
 static lv_obj_t *sw_echo = nullptr;
 static lv_obj_t *dd_rot = nullptr;
+static lv_obj_t *sw_wifi = nullptr;
 
 static bool g_rebuild = false;
 
@@ -48,18 +50,35 @@ static int32_t imin(int32_t a, int32_t b) { return a < b ? a : b; }
 static void build_ui();
 static void show_keys();
 
+// A felso sáv váltogatott oldala: 0 = port-beállítások, 1 = Wi-Fi/IP.
+static int s_statusPage = 0;
+
 static void update_status()
 {
     static const char *le_short[] = {"-", "LF", "CRLF", "CR"};
+
     if (vt.scroll() > 0)
+    {
         lv_label_set_text_fmt(status_lbl, LV_SYMBOL_UP " SCROLL -%d/%d  (drag)",
                               vt.scroll(), vt.scrollbackCount());
-    else
-        lv_label_set_text_fmt(status_lbl,
-                              LV_SYMBOL_USB " RPi %lu 8N1 %s%s %dx%d",
-                              (unsigned long)cfg.baud,
-                              le_short[cfg.lineEnding <= 3 ? cfg.lineEnding : 0],
-                              cfg.localEcho ? " echo" : "", vt.cols(), vt.rows());
+        return;
+    }
+
+    // Wi-Fi bekapcsolva: váltogatjuk a port-beállításokat és az IP-t.
+    if (wifi_bridge_running() && s_statusPage == 1)
+    {
+        if (wifi_bridge_connected())
+            lv_label_set_text_fmt(status_lbl, LV_SYMBOL_WIFI " %s : telnet 23",
+                                  wifi_bridge_ip().c_str());
+        else
+            lv_label_set_text(status_lbl, LV_SYMBOL_WIFI " connecting...");
+        return;
+    }
+
+    lv_label_set_text_fmt(status_lbl, LV_SYMBOL_USB " RPi %lu 8N1 %s%s",
+                          (unsigned long)cfg.baud,
+                          le_short[cfg.lineEnding <= 3 ? cfg.lineEnding : 0],
+                          cfg.localEcho ? " echo" : "");
 }
 
 // --- Terminál rajzolása (egyedi LVGL draw) ---------------------------------
@@ -165,6 +184,8 @@ static void term_draw_cb(lv_event_t *e)
 
 static void pump_serial()
 {
+    uint8_t batch[64];
+    int n = 0;
     int budget = 1024;
     while (Serial.available() > 0 && budget-- > 0)
     {
@@ -172,7 +193,11 @@ static void pump_serial()
         if (b < 0)
             break;
         vt.feed((uint8_t)b);
+        batch[n++] = (uint8_t)b;
+        if (n == (int)sizeof(batch)) { wifi_bridge_write(batch, n); n = 0; }
     }
+    if (n)
+        wifi_bridge_write(batch, n); // a Pi kimenetét a telnet kliensnek is
 }
 
 static void send_line(const char *t)
@@ -256,21 +281,38 @@ static void close_settings()
     {
         lv_obj_delete(set_overlay);
         set_overlay = nullptr;
-        dd_baud = dd_le = sw_echo = dd_rot = nullptr;
+        dd_baud = dd_le = sw_echo = dd_rot = sw_wifi = nullptr;
     }
 }
 
 static void settings_save_cb(lv_event_t *)
 {
     uint8_t oldRot = cfg.rotation;
+    bool oldWifi = cfg.wifi;
     cfg.baud = BAUD_OPTIONS[lv_dropdown_get_selected(dd_baud)];
     cfg.lineEnding = (uint8_t)lv_dropdown_get_selected(dd_le);
     cfg.localEcho = lv_obj_has_state(sw_echo, LV_STATE_CHECKED);
     cfg.rotation = (uint8_t)lv_dropdown_get_selected(dd_rot);
+    cfg.wifi = lv_obj_has_state(sw_wifi, LV_STATE_CHECKED);
 
     config_save(cfg);
     Serial.updateBaudRate(cfg.baud);
     close_settings();
+
+    // Wi-Fi be/ki azonnal alkalmazva.
+    if (cfg.wifi != oldWifi)
+    {
+        if (cfg.wifi)
+        {
+            wifi_bridge_start();
+            vt.feedStr("\r\n[Wi-Fi: connecting to \"HM\"... telnet :23]\r\n");
+        }
+        else
+        {
+            wifi_bridge_stop();
+            vt.feedStr("\r\n[Wi-Fi off]\r\n");
+        }
+    }
 
     if (cfg.rotation != oldRot)
         g_rebuild = true;
@@ -355,6 +397,20 @@ static void show_settings()
     lv_dropdown_set_options(dd_rot, "Portrait (46 cols)\nLandscape (62 cols)");
     lv_dropdown_set_selected(dd_rot, cfg.rotation ? 1 : 0);
     lv_obj_set_width(dd_rot, LV_PCT(100));
+
+    // Wi-Fi telnet bevitel kapcsoló (SSID: HM)
+    lv_obj_t *wrow = lv_obj_create(panel);
+    lv_obj_remove_style_all(wrow);
+    lv_obj_set_size(wrow, LV_PCT(100), 36);
+    lv_obj_set_flex_flow(wrow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(wrow, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *lb5 = lv_label_create(wrow);
+    lv_label_set_text(lb5, LV_SYMBOL_WIFI " Wi-Fi telnet");
+    lv_obj_set_style_text_color(lb5, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
+    sw_wifi = lv_switch_create(wrow);
+    if (cfg.wifi)
+        lv_obj_add_state(sw_wifi, LV_STATE_CHECKED);
 
     // Billentyuzet elohívása (alapból nem látszik)
     lv_obj_t *kbbtn = lv_button_create(panel);
@@ -580,6 +636,12 @@ void setup()
 
     vt.feedStr("VT100 terminal ready.\r\n");
     vt.feedStr("Pi -> P1 port (TX=GPIO1, RX=GPIO3, GND).\r\n\n");
+
+    if (cfg.wifi)
+    {
+        wifi_bridge_start();
+        vt.feedStr("[Wi-Fi: connecting to \"HM\"... telnet :23]\r\n");
+    }
 }
 
 static uint32_t last_tick = 0;
@@ -596,6 +658,37 @@ void loop()
     {
         g_rebuild = false;
         rebuild_ui();
+    }
+
+    // Wi-Fi telnet: kliens kezelése + a kliens gépelése -> a Pi felé.
+    static bool wifiWasConnected = false;
+    if (wifi_bridge_running())
+    {
+        wifi_bridge_poll();
+        bool conn = wifi_bridge_connected();
+        if (conn && !wifiWasConnected)
+        {
+            String line = "\r\n[Wi-Fi connected: " + wifi_bridge_ip() + "  telnet :23]\r\n";
+            vt.feedStr(line.c_str());
+        }
+        wifiWasConnected = conn;
+
+        uint8_t wb[64];
+        int wn = wifi_bridge_read(wb, sizeof(wb));
+        if (wn > 0)
+        {
+            Serial.write(wb, wn); // a telnet-bemenet a Pi-nek
+            vt.scrollToBottom();
+        }
+    }
+
+    // Felso sáv váltogatása ~3 mp-enként (port-beállítások <-> IP), ha a Wi-Fi megy.
+    static uint32_t last_status = 0;
+    if (now - last_status > 3000)
+    {
+        last_status = now;
+        s_statusPage = wifi_bridge_running() ? (s_statusPage ^ 1) : 0;
+        update_status();
     }
 
     pump_serial();

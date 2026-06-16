@@ -14,6 +14,7 @@ void config_load(TermConfig &c)
     c.lineEnding = prefs.getUChar("le", 1); // alapból LF
     c.localEcho = prefs.getBool("echo", false);
     c.rotation = prefs.getUChar("rot", 0); // alapból álló
+    c.wifi = prefs.getBool("wifi", false);
     prefs.end();
 }
 
@@ -24,6 +25,7 @@ void config_save(const TermConfig &c)
     prefs.putUChar("le", c.lineEnding);
     prefs.putBool("echo", c.localEcho);
     prefs.putUChar("rot", c.rotation);
+    prefs.putBool("wifi", c.wifi);
     prefs.end();
 }
 
