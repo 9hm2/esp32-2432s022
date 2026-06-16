@@ -6,12 +6,19 @@ képernyo-billentyuzetrol parancsot küldhetsz, és a beállítások perzisztens
 
 ## Funkciók
 
-- **Terminál-kimenet** monospace (UNSCII) fonttal, auto-görgetéssel.
-- Bejövo adat **ANSI/VT100 escape-szekvenciák szurésével** (tiszta, olvasható kép),
-  `CR/LF`, `TAB`, `Backspace` kezeléssel.
+- **Valódi VT100/ANSI terminál** (nem csak teletype): karakterrács + kurzor +
+  escape-szekvenciák. Támogatott:
+  - kurzormozgás (CUU/CUD/CUF/CUB, CUP/HVP, CHA, VPA, NEL, IND/RI),
+  - törlés (ED `J`, EL `K`), sor/karakter beszúrás-törlés (`L M P @ X`),
+  - görgetés és **görgetési régió** (DECSTBM `r`, `S`/`T`),
+  - **SGR színek/attribútumok**: 16 alap-, **256-szín** (`38;5;n`/`48;5;n`),
+    truecolor közelítés (`38;2;r;g;b`), **félkövér**, **inverz**, alaphelyzet,
+  - kurzor mentés/visszaállítás (`s`/`u`), kurzor láthatóság (`?25h/l`).
+- **Egyedi LVGL rajzolás** monospace **UNSCII 8×8** fonttal (elotér + háttér +
+  inverz cellánként, blokk-kurzor).
 - **Képernyo-billentyuzet** a parancsok küldéséhez (⌨ gomb).
 - **Beállítások** (⚙): **baud** (9600–230400), **sorvég** (nincs/LF/CRLF/CR),
-  **helyi echo** — NVS-be mentve (újraindítás után is megmarad).
+  **helyi echo**, **tájolás** (álló/fekvo) — NVS-be mentve.
 - **Törlés** (🗑) és **Vissza a launcherhez** (⟵).
 
 ## Bekötés a Raspberry Pi-hez (P1 port)
@@ -49,12 +56,14 @@ RESET vagy a ⟵ gomb visszavisz a launcherbe.
 - A font **UNSCII 8×8** — az LVGL-be épített **legkisebb monospace** font.
 - Térközök nullázva, minimális padding → **álló módban ~29 oszlop × ~30 sor**
   fér ki a 240×254 px-es terminálablakban.
-- **Fekvo módban (landscape) ~40 oszlop × ~22 sor** lenne (szélesebb sorok). Ha
-  ezt szeretnéd, a `lv_display_set_rotation(...LANDSCAPE...)` + a UI méretek
-  átállítása kell — szólj, és átkapcsolom (vagy beállítássá teszem).
+- **Fekvo módban ~40 oszlop × ~22 sor** (szélesebb sorok). A tájolás a
+  **Beállítások** (⚙) menüben váltható, NVS-be mentve.
 
 ## Korlátok
 
-- Nem teljes VT100-emuláció: az escape-szekvenciákat **eldobja** (nem értelmezi a
-  kurzormozgást/színt), de a szöveg tisztán olvasható marad.
-- A kimeneti puffer kb. 4 KB (a régi sorok kigörögnek).
+- A rács **fix képernyo** (mint egy igazi VT100), külön **scrollback nincs** — a
+  felfelé görgetés a programok dolga (pl. `less`, `tmux`).
+- Truecolor (`38;2`) a 256-szín palettára **közelítve** jelenik meg.
+- Néhány ritka szekvenciát (alternatív képernyo `?1049`, charset váltás) figyelmen
+  kívül hagy; a tipikus konzol/`nano`/`htop`/`vim` kimenet helyesen jelenik meg.
+- Max rács 60×40 cella (a tájolásból adódó méret bõven belefér).

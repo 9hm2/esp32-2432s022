@@ -1,33 +1,31 @@
-// Serial Terminal — Raspberry Pi soros konzol az ESP32-2432S022C kijelzon
-// ======================================================================
-// Valódi, látható soros terminál: az UART-on érkező szöveget görgethető
-// terminálablakban mutatja, képernyő-billentyűzetrol parancsot küldhetsz, és a
-// beállítások (baud, sorvég, helyi echo) állíthatók + NVS-be mentodnek.
+// Serial Terminal (VT100) — Raspberry Pi soros konzol az ESP32-2432S022C-n
+// ========================================================================
+// Valódi VT100/ANSI terminál: karakterrács + kurzor + escape-szekvenciák
+// (kurzormozgás, törlés, görgetés, SGR színek/attribútumok). A rácsot egyedi
+// LVGL rajzolással jelenítjük meg, monospace UNSCII 8x8 fonttal.
 //
-// BEKÖTÉS a Raspberry Pi-hez (a panel P1 / "4P 1.25 Power supply base" portja):
-//   - UART0-t használjuk (a P1-re kivezetett U0TXD=GPIO1, U0RXD=GPIO3).
-//   - Pi TXD  -> board RXD (GPIO3)
-//   - Pi RXD  <- board TXD (GPIO1)
-//   - GND  <-> GND  (közös föld kötelezo)
-//   - A Pi 3.3V logikai szintu (kompatibilis); 5V-ot NE köss a TX/RX-re.
-//   - A panel táplálható a P1 Vin(5V)-rol vagy USB-rol.
-//
-// Megjegyzés: az UART0 a programozó/USB konzol is. Ez az app NEM ír debug
-// üzenetet az UART0-ra, hogy ne zavarja a Pi-kapcsolatot.
+// BEKÖTÉS a Raspberry Pi-hez (a panel P1 / "4P 1.25 Power supply base" portja,
+// UART0): Pi TXD -> RXD(GPIO3), Pi RXD <- TXD(GPIO1), GND <-> GND. 3.3V logika.
+// Az app NEM ír debug üzenetet az UART0-ra, hogy ne zavarja a kapcsolatot.
 
 #include <Arduino.h>
 #include <esp32_smartdisplay.h>
 
 #include "config.h"
 #include "launcher_return.h"
+#include "vt100.h"
 
 static TermConfig cfg;
+static Vt100 vt;
+
+// Cella méret = az UNSCII 8x8 font.
+static constexpr int CELL = 8;
+static constexpr int TOP_H = 24; // állapotsor
+static constexpr int BAR_H = 40; // eszköztár
 
 // --- UI elemek -------------------------------------------------------------
-static lv_obj_t *term_ta = nullptr;   // a terminál-kimenet (read-only)
-static lv_obj_t *status_lbl = nullptr; // felso állapotsor
-
-// A keyboard / settings overlay-k.
+static lv_obj_t *term_obj = nullptr;   // egyedi rajzolású terminál
+static lv_obj_t *status_lbl = nullptr;
 static lv_obj_t *kb_overlay = nullptr;
 static lv_obj_t *input_ta = nullptr;
 static lv_obj_t *set_overlay = nullptr;
@@ -36,94 +34,98 @@ static lv_obj_t *dd_le = nullptr;
 static lv_obj_t *sw_echo = nullptr;
 static lv_obj_t *dd_rot = nullptr;
 
-static bool g_rebuild = false; // tájolás-váltáskor a loop()-ban építjük újra a UI-t
+static bool g_rebuild = false;
 
-// Az aktuális (tájolás szerinti) képernyoméret.
 static int32_t scrW() { return lv_display_get_horizontal_resolution(NULL); }
 static int32_t scrH() { return lv_display_get_vertical_resolution(NULL); }
 static int32_t imin(int32_t a, int32_t b) { return a < b ? a : b; }
 
 static void build_ui();
 
-// --- Terminál-puffer -------------------------------------------------------
-static String termBuf;
-static bool termDirty = false;
-static constexpr size_t TERM_MAX = 4000; // efölött trimmelünk
-static constexpr size_t TERM_KEEP = 3000;
-
 static void update_status()
 {
     static const char *le_short[] = {"-", "LF", "CRLF", "CR"};
-    lv_label_set_text_fmt(status_lbl, LV_SYMBOL_USB "  RPi  %lu 8N1  %s%s",
+    lv_label_set_text_fmt(status_lbl,
+                          LV_SYMBOL_USB "  RPi %lu 8N1 %s%s  %dx%d",
                           (unsigned long)cfg.baud,
                           le_short[cfg.lineEnding <= 3 ? cfg.lineEnding : 0],
-                          cfg.localEcho ? "  echo" : "");
+                          cfg.localEcho ? " echo" : "", vt.cols(), vt.rows());
 }
 
-// Egy bejövo byte feldolgozása (ANSI/vezérlo-szuréssel) -> termBuf.
-static void term_feed_byte(uint8_t b)
+// --- Terminál rajzolása (egyedi LVGL draw) ---------------------------------
+
+static void term_draw_cb(lv_event_t *e)
 {
-    static int esc = 0; // 0=normál, 1=ESC után, 2=CSI-ben
+    lv_obj_t *obj = lv_event_get_target_obj(e);
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_area_t area;
+    lv_obj_get_content_coords(obj, &area);
+    const int32_t ox = area.x1, oy = area.y1;
 
-    if (esc == 1)
-    {
-        esc = (b == '[') ? 2 : 0; // csak a CSI ( ESC [ ) szekvenciát kezeljük
-        return;
-    }
-    if (esc == 2)
-    {
-        if (b >= 0x40 && b <= 0x7E) // a CSI végjele egy betu/jel
-            esc = 0;
-        return; // a szekvencia tartalmát eldobjuk
-    }
+    lv_draw_rect_dsc_t rd;
+    lv_draw_rect_dsc_init(&rd);
+    rd.bg_opa = LV_OPA_COVER;
 
-    if (b == 0x1B) { esc = 1; return; }        // ESC
-    if (b == '\r') return;                       // CR-t eldobjuk (CRLF -> LF)
-    if (b == 0x08 || b == 0x7F)                  // backspace / DEL
+    lv_draw_letter_dsc_t ld;
+    lv_draw_letter_dsc_init(&ld);
+    ld.font = &lv_font_unscii_8;
+    ld.opa = LV_OPA_COVER;
+
+    for (int y = 0; y < vt.rows(); y++)
     {
-        if (termBuf.length())
-            termBuf.remove(termBuf.length() - 1);
-        termDirty = true;
-        return;
+        for (int x = 0; x < vt.cols(); x++)
+        {
+            const VtCell &c = vt.cell(x, y);
+            lv_color_t fg = (c.flags & VT_FG_DEF) ? Vt100::defaultFg()
+                                                  : Vt100::palette(c.fg);
+            lv_color_t bg = (c.flags & VT_BG_DEF) ? Vt100::defaultBg()
+                                                  : Vt100::palette(c.bg);
+            bool inv = (c.flags & VT_INVERSE) != 0;
+            if (vt.cursorVisible() && x == vt.curX() && y == vt.curY())
+                inv = !inv; // kurzor = invertált cella
+
+            if (inv)
+            {
+                lv_color_t t = fg;
+                fg = bg;
+                bg = t;
+            }
+
+            const int32_t cx = ox + x * CELL, cy = oy + y * CELL;
+
+            // Háttér: csak ha nem az alap (fekete), vagy invertált/kurzor.
+            if (inv || !(c.flags & VT_BG_DEF))
+            {
+                rd.bg_color = bg;
+                lv_area_t ca = {cx, cy, cx + CELL - 1, cy + CELL - 1};
+                lv_draw_rect(layer, &rd, &ca);
+            }
+
+            if (c.ch > ' ')
+            {
+                ld.color = fg;
+                ld.unicode = c.ch;
+                lv_point_t p = {cx, cy};
+                lv_draw_letter(layer, &ld, &p);
+            }
+        }
     }
-    if (b == '\n') { termBuf += '\n'; termDirty = true; return; }
-    if (b == '\t') { termBuf += "  "; termDirty = true; return; }
-    if (b >= 0x20 && b < 0x7F) { termBuf += (char)b; termDirty = true; }
-    // minden más (nem nyomtatható / >=0x80) eldobva
 }
 
-// A puffer megjelenítése + auto-görgetés a végére.
-static void term_flush()
-{
-    if (!termDirty)
-        return;
-    termDirty = false;
+// --- UART <-> terminál -----------------------------------------------------
 
-    if (termBuf.length() > TERM_MAX)
-    {
-        int cut = (int)termBuf.length() - (int)TERM_KEEP;
-        int nl = termBuf.indexOf('\n', cut);
-        termBuf.remove(0, (nl >= 0 ? nl + 1 : cut));
-    }
-
-    lv_textarea_set_text(term_ta, termBuf.c_str());
-    lv_textarea_set_cursor_pos(term_ta, LV_TEXTAREA_CURSOR_LAST); // a végére görget
-}
-
-// UART -> terminál (loop()-ból, korlátozott mennyiség ciklusonként).
 static void pump_serial()
 {
-    int budget = 512;
+    int budget = 1024;
     while (Serial.available() > 0 && budget-- > 0)
     {
         int b = Serial.read();
         if (b < 0)
             break;
-        term_feed_byte((uint8_t)b);
+        vt.feed((uint8_t)b);
     }
 }
 
-// Egy sor kiküldése a Pi felé.
 static void send_line(const char *t)
 {
     if (!t)
@@ -132,9 +134,9 @@ static void send_line(const char *t)
     Serial.print(line_ending_suffix(cfg.lineEnding));
     if (cfg.localEcho)
     {
-        termBuf += t;
-        termBuf += '\n';
-        termDirty = true;
+        vt.feedStr(t);
+        vt.feed('\r');
+        vt.feed('\n');
     }
 }
 
@@ -152,20 +154,18 @@ static void close_keyboard()
 
 static void kb_event_cb(lv_event_t *e)
 {
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_READY) // pipa = küldés
+    if (lv_event_get_code(e) == LV_EVENT_READY)
         send_line(lv_textarea_get_text(input_ta));
-    close_keyboard(); // READY és CANCEL esetén is bezár
+    close_keyboard();
 }
 
 static void show_keyboard()
 {
     if (kb_overlay)
         return;
-
     const int32_t W = scrW();
     const int32_t H = scrH();
-    int32_t ovH = (H * 7) / 10; // a képernyo ~70%-a
+    int32_t ovH = (H * 7) / 10;
     if (ovH < 150)
         ovH = 150;
     const int32_t inH = 36;
@@ -189,7 +189,7 @@ static void show_keyboard()
     lv_obj_add_event_cb(kb, kb_event_cb, LV_EVENT_CANCEL, NULL);
 }
 
-// --- Beállítások ablak -----------------------------------------------------
+// --- Beállítások -----------------------------------------------------------
 
 static void close_settings()
 {
@@ -204,18 +204,17 @@ static void close_settings()
 static void settings_save_cb(lv_event_t *)
 {
     uint8_t oldRot = cfg.rotation;
-
     cfg.baud = BAUD_OPTIONS[lv_dropdown_get_selected(dd_baud)];
     cfg.lineEnding = (uint8_t)lv_dropdown_get_selected(dd_le);
     cfg.localEcho = lv_obj_has_state(sw_echo, LV_STATE_CHECKED);
     cfg.rotation = (uint8_t)lv_dropdown_get_selected(dd_rot);
 
     config_save(cfg);
-    Serial.updateBaudRate(cfg.baud); // azonnali alkalmazás
+    Serial.updateBaudRate(cfg.baud);
     close_settings();
 
     if (cfg.rotation != oldRot)
-        g_rebuild = true; // a tájolás-váltást a loop()-ban végezzük
+        g_rebuild = true;
     else
         update_status();
 }
@@ -227,7 +226,6 @@ static void show_settings()
     if (set_overlay)
         return;
 
-    // Sötétíto háttér
     set_overlay = lv_obj_create(lv_layer_top());
     lv_obj_set_size(set_overlay, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_color(set_overlay, lv_color_black(), LV_PART_MAIN);
@@ -248,7 +246,6 @@ static void show_settings()
     lv_obj_set_style_text_color(t, lv_color_hex(0xFFD400), LV_PART_MAIN);
     lv_obj_set_style_text_font(t, &lv_font_montserrat_16, LV_PART_MAIN);
 
-    // Baud
     lv_obj_t *lb1 = lv_label_create(panel);
     lv_label_set_text(lb1, "Baud:");
     lv_obj_set_style_text_color(lb1, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
@@ -257,7 +254,6 @@ static void show_settings()
     lv_dropdown_set_selected(dd_baud, baud_to_index(cfg.baud));
     lv_obj_set_width(dd_baud, LV_PCT(100));
 
-    // Sorvég
     lv_obj_t *lb2 = lv_label_create(panel);
     lv_label_set_text(lb2, "Sorveg (kuldeskor):");
     lv_obj_set_style_text_color(lb2, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
@@ -266,7 +262,6 @@ static void show_settings()
     lv_dropdown_set_selected(dd_le, cfg.lineEnding <= 3 ? cfg.lineEnding : 1);
     lv_obj_set_width(dd_le, LV_PCT(100));
 
-    // Helyi echo
     lv_obj_t *row = lv_obj_create(panel);
     lv_obj_remove_style_all(row);
     lv_obj_set_size(row, LV_PCT(100), 36);
@@ -280,7 +275,6 @@ static void show_settings()
     if (cfg.localEcho)
         lv_obj_add_state(sw_echo, LV_STATE_CHECKED);
 
-    // Tájolás
     lv_obj_t *lb4 = lv_label_create(panel);
     lv_label_set_text(lb4, "Tajolas:");
     lv_obj_set_style_text_color(lb4, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
@@ -289,37 +283,33 @@ static void show_settings()
     lv_dropdown_set_selected(dd_rot, cfg.rotation ? 1 : 0);
     lv_obj_set_width(dd_rot, LV_PCT(100));
 
-    // Gombok
     lv_obj_t *btnrow = lv_obj_create(panel);
     lv_obj_remove_style_all(btnrow);
     lv_obj_set_size(btnrow, LV_PCT(100), 50);
     lv_obj_set_flex_flow(btnrow, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(btnrow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
-
     lv_obj_t *cancel = lv_button_create(btnrow);
     lv_obj_add_event_cb(cancel, settings_cancel_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *cl = lv_label_create(cancel);
     lv_label_set_text(cl, "Megse");
-
     lv_obj_t *save = lv_button_create(btnrow);
     lv_obj_add_event_cb(save, settings_save_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *sl = lv_label_create(save);
     lv_label_set_text(sl, "Mentes");
 }
 
-// --- Alsó eszköztár gombjai ------------------------------------------------
+// --- Eszköztár -------------------------------------------------------------
 
 static void btn_type_cb(lv_event_t *) { show_keyboard(); }
 static void btn_cfg_cb(lv_event_t *) { show_settings(); }
 static void btn_clear_cb(lv_event_t *)
 {
-    termBuf = "";
-    lv_textarea_set_text(term_ta, "");
+    vt.reset();
+    lv_obj_invalidate(term_obj);
 }
 static void btn_exit_cb(lv_event_t *) { return_to_launcher(); }
 
-// A tájolás beállítása a configból.
 static void apply_rotation()
 {
     lv_display_set_rotation(lv_display_get_default(),
@@ -327,17 +317,7 @@ static void apply_rotation()
                                          : LV_DISPLAY_ROTATION_0);
 }
 
-// A teljes fo-UI újraépítése az új tájolással (a loop()-ból hívva).
-static void rebuild_ui()
-{
-    apply_rotation();
-    lv_obj_clean(lv_screen_active()); // a régi term_ta/status/bar törlése
-    build_ui();
-    lv_textarea_set_text(term_ta, termBuf.c_str());
-    lv_textarea_set_cursor_pos(term_ta, LV_TEXTAREA_CURSOR_LAST);
-}
-
-static lv_obj_t *make_tool_btn(lv_obj_t *parent, const char *sym, lv_event_cb_t cb)
+static void make_tool_btn(lv_obj_t *parent, const char *sym, lv_event_cb_t cb)
 {
     lv_obj_t *b = lv_button_create(parent);
     lv_obj_set_flex_grow(b, 1);
@@ -346,42 +326,37 @@ static lv_obj_t *make_tool_btn(lv_obj_t *parent, const char *sym, lv_event_cb_t 
     lv_obj_t *l = lv_label_create(b);
     lv_label_set_text(l, sym);
     lv_obj_center(l);
-    return b;
 }
 
 static void build_ui()
 {
     const int32_t W = scrW();
     const int32_t H = scrH();
-    const int32_t BAR_H = 40;
-    const int32_t TOP_H = 24;
 
     lv_obj_t *scr = lv_screen_active();
-    lv_obj_set_style_bg_color(scr, lv_color_hex(0x0a0e12), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(scr, lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_set_style_pad_all(scr, 0, LV_PART_MAIN);
 
-    // Állapotsor
     status_lbl = lv_label_create(scr);
     lv_obj_set_style_text_color(status_lbl, lv_color_hex(0x6ff0a0), LV_PART_MAIN);
     lv_obj_set_style_text_font(status_lbl, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_align(status_lbl, LV_ALIGN_TOP_LEFT, 4, 5);
 
-    // Terminál-kimenet (read-only, monospace)
-    term_ta = lv_textarea_create(scr);
-    lv_obj_set_pos(term_ta, 0, TOP_H);
-    lv_obj_set_size(term_ta, W, H - TOP_H - BAR_H);
-    lv_obj_remove_flag(term_ta, LV_OBJ_FLAG_CLICKABLE); // ne lehessen szerkeszteni
-    lv_textarea_set_cursor_click_pos(term_ta, false);
-    lv_obj_set_style_bg_color(term_ta, lv_color_hex(0x000000), LV_PART_MAIN);
-    lv_obj_set_style_text_color(term_ta, lv_color_hex(0xC8F0C8), LV_PART_MAIN);
-    // UNSCII 8x8: a legkisebb beepitett monospace font. A terkozok nullazasaval
-    // es minimalis paddinggel ~29 oszlop x ~30 sor fer ki (240x254 px teruleten).
-    lv_obj_set_style_text_font(term_ta, &lv_font_unscii_8, LV_PART_MAIN);
-    lv_obj_set_style_text_line_space(term_ta, 0, LV_PART_MAIN);
-    lv_obj_set_style_text_letter_space(term_ta, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(term_ta, 2, LV_PART_MAIN);
+    // Terminál-objektum (egyedi rajzolás)
+    const int32_t termW = W;
+    const int32_t termH = H - TOP_H - BAR_H;
+    term_obj = lv_obj_create(scr);
+    lv_obj_remove_style_all(term_obj);
+    lv_obj_set_pos(term_obj, 0, TOP_H);
+    lv_obj_set_size(term_obj, termW, termH);
+    lv_obj_set_style_bg_color(term_obj, Vt100::defaultBg(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(term_obj, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_clear_flag(term_obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(term_obj, term_draw_cb, LV_EVENT_DRAW_MAIN_END, NULL);
 
-    // Alsó eszköztár
+    vt.resize(termW / CELL, termH / CELL);
+
+    // Eszköztár
     lv_obj_t *bar = lv_obj_create(scr);
     lv_obj_remove_style_all(bar);
     lv_obj_set_size(bar, W, BAR_H);
@@ -391,7 +366,6 @@ static void build_ui()
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(bar, 4, LV_PART_MAIN);
     lv_obj_set_style_pad_all(bar, 3, LV_PART_MAIN);
-
     make_tool_btn(bar, LV_SYMBOL_KEYBOARD, btn_type_cb);
     make_tool_btn(bar, LV_SYMBOL_SETTINGS, btn_cfg_cb);
     make_tool_btn(bar, LV_SYMBOL_TRASH, btn_clear_cb);
@@ -400,21 +374,24 @@ static void build_ui()
     update_status();
 }
 
+static void rebuild_ui()
+{
+    apply_rotation();
+    lv_obj_clean(lv_screen_active());
+    build_ui();
+}
+
 void setup()
 {
     config_load(cfg);
-
-    // UART0 a Pi felé (P1: TX=GPIO1, RX=GPIO3). NINCS debug print ide.
-    Serial.begin(cfg.baud);
+    Serial.begin(cfg.baud); // UART0 a Pi felé (P1: TX=GPIO1, RX=GPIO3)
 
     smartdisplay_init();
-    apply_rotation(); // a configban tárolt tájolás (álló/fekvo)
+    apply_rotation();
     build_ui();
 
-    termBuf.reserve(TERM_MAX + 64);
-    termBuf = "[serial terminal]\n";
-    termBuf += "Csatlakoztasd a Pi-t a P1 portra (TX=GPIO1, RX=GPIO3, GND).\n\n";
-    termDirty = true;
+    vt.feedStr("VT100 terminal kesz.\r\n");
+    vt.feedStr("Pi -> P1 port (TX=GPIO1, RX=GPIO3, GND).\r\n\n");
 }
 
 static uint32_t last_tick = 0;
@@ -432,7 +409,11 @@ void loop()
     }
 
     pump_serial();
-    term_flush();
+    if (vt.dirty())
+    {
+        vt.clearDirty();
+        lv_obj_invalidate(term_obj);
+    }
 
     lv_timer_handler();
     delay(5);
