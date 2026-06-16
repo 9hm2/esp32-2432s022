@@ -5,23 +5,27 @@ Az ESP32-2432S022C-re készülő, érintőképernyős **app-indító**. SD-kárt
 
 A teljes tervet lásd: [`../../docs/BOOTLOADER_PLAN.md`](../../docs/BOOTLOADER_PLAN.md).
 
-## Állapot: M1 ✅
+## Állapot: M2 ✅
 
 | Mérföldkő | Tartalom | Állapot |
 |---|---|---|
-| **M1** | partíciótábla + SD mount + `.bin` listázás soros porton | ✅ kész (fordul) |
-| M2 | LVGL lista GUI | hátravan |
+| **M1** | partíciótábla + SD mount + `.bin` listázás soros porton | ✅ kész |
+| **M2** | LVGL lista GUI (érintéssel) | ✅ kész (fordul) |
 | M3 | OTA flash-and-boot (PoC) | hátravan |
 | M4 | teljes folyamat GUI-val | hátravan |
 | M5 | vissza a menübe (rollback + kooperatív) | hátravan |
 | M6 | csiszolás | hátravan |
 
-## Mit csinál most (M1)
+## Mit csinál most (M2)
 
 Bootkor a launcher (factory partíció):
-1. soros portra kiírja a partíció-elrendezést (futó / factory / ota_0),
-2. csatolja az SD-kártyát (SPI: CS=5, SCK=18, MISO=19, MOSI=23),
-3. kilistázza az `/apps/*.bin` fájlokat (ha üres, a gyökeret), méretükkel.
+1. soros portra kiírja a partíció-elrendezést (futó / ota_0),
+2. inicializálja a kijelzőt + touch-ot + LVGL-t (smartdisplay),
+3. csatolja az SD-kártyát (SPI: CS=5, SCK=18, MISO=19, MOSI=23),
+4. **érintőképernyős listában** mutatja az `/apps/*.bin` fájlokat (név + méret),
+5. koppintásra visszajelez (a tényleges flashelés az M3).
+
+Hibák (nincs SD / nincs `.bin`) modális üzenetben jelennek meg.
 
 ## SD-kártya elrendezés
 
