@@ -21,9 +21,10 @@ képernyo-billentyuzetrol parancsot küldhetsz, és a beállítások perzisztens
 - **Képernyo-billentyuzet** a parancsok küldéséhez (sorvégződéssel) — a
   **Beállítások** (⚙) menüben a „Billentyuzet" gombbal hívható elo; alapból nem
   jelenik meg (több hely a terminálnak).
-- **Fn billentyu-panel** (Fn): nyers byte-ok közvetlenül a Pi-nek —
+- **Fn billentyu-panel**: nyers byte-ok közvetlenül a Pi-nek —
   **Esc, Tab, Ctrl-C/D/Z, nyilak (↑↓←→), Backspace, Enter** (interaktív
-  programokhoz: `nano`, `vim`, `htop`, `top`, shell job control).
+  programokhoz: `nano`, `vim`, `htop`, `top`, shell job control). A
+  **Beállítások** (⚙) menüből hívható elo.
 - **Beállítások** (⚙): **baud** (9600–230400), **sorvég** (nincs/LF/CRLF/CR),
   **helyi echo**, **tájolás** (álló/fekvo) — NVS-be mentve.
 - **Törlés** (🗑) és **Vissza a launcherhez** (⟵).

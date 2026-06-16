@@ -41,6 +41,7 @@ static int32_t scrH() { return lv_display_get_vertical_resolution(NULL); }
 static int32_t imin(int32_t a, int32_t b) { return a < b ? a : b; }
 
 static void build_ui();
+static void show_keys();
 
 static void update_status()
 {
@@ -243,6 +244,13 @@ static void settings_keyboard_cb(lv_event_t *)
     show_keyboard();
 }
 
+// A speciális (Fn) billentyuk a beállításokból hívhatók elo.
+static void settings_keys_cb(lv_event_t *)
+{
+    close_settings();
+    show_keys();
+}
+
 static void show_settings()
 {
     if (set_overlay)
@@ -312,6 +320,14 @@ static void show_settings()
     lv_obj_t *kbl = lv_label_create(kbbtn);
     lv_label_set_text(kbl, LV_SYMBOL_KEYBOARD "  Billentyuzet");
     lv_obj_center(kbl);
+
+    // Speciális (Fn) billentyuk elohívása
+    lv_obj_t *fnbtn = lv_button_create(panel);
+    lv_obj_set_width(fnbtn, LV_PCT(100));
+    lv_obj_add_event_cb(fnbtn, settings_keys_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *fnl = lv_label_create(fnbtn);
+    lv_label_set_text(fnl, "Fn billentyuk (nyilak, Ctrl-C...)");
+    lv_obj_center(fnl);
 
     lv_obj_t *btnrow = lv_obj_create(panel);
     lv_obj_remove_style_all(btnrow);
@@ -424,7 +440,6 @@ static void term_press_cb(lv_event_t *e)
 
 // --- Eszköztár -------------------------------------------------------------
 
-static void btn_keys_cb(lv_event_t *) { show_keys(); }
 static void btn_cfg_cb(lv_event_t *) { show_settings(); }
 static void btn_clear_cb(lv_event_t *)
 {
@@ -492,8 +507,7 @@ static void build_ui()
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(bar, 4, LV_PART_MAIN);
     lv_obj_set_style_pad_all(bar, 3, LV_PART_MAIN);
-    // A szövegbeíró billentyuzet a ⚙ beállításokból hívható elo (alapból nincs).
-    make_tool_btn(bar, "Fn", btn_keys_cb); // speciális billentyuk
+    // A billentyuzet és az Fn billentyuk a ⚙ beállításokból hívhatók elo.
     make_tool_btn(bar, LV_SYMBOL_SETTINGS, btn_cfg_cb);
     make_tool_btn(bar, LV_SYMBOL_TRASH, btn_clear_cb);
     make_tool_btn(bar, LV_SYMBOL_LEFT, btn_exit_cb);
