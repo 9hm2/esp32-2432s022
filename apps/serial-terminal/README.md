@@ -18,7 +18,9 @@ képernyo-billentyuzetrol parancsot küldhetsz, és a beállítások perzisztens
   inverz cellánként, blokk-kurzor).
 - **Scrollback** (120 sor): **húzd le/fel a terminált** a régi sorok
   megtekintéséhez (scroll-lock: a nézet a helyén marad új adat érkezésekor is).
-- **Képernyo-billentyuzet** (⌨) a parancsok küldéséhez (sorvégződéssel).
+- **Képernyo-billentyuzet** a parancsok küldéséhez (sorvégződéssel) — a
+  **Beállítások** (⚙) menüben a „Billentyuzet" gombbal hívható elo; alapból nem
+  jelenik meg (több hely a terminálnak).
 - **Fn billentyu-panel** (Fn): nyers byte-ok közvetlenül a Pi-nek —
   **Esc, Tab, Ctrl-C/D/Z, nyilak (↑↓←→), Backspace, Enter** (interaktív
   programokhoz: `nano`, `vim`, `htop`, `top`, shell job control).
