@@ -24,10 +24,11 @@ fut. Ezért:
 - **RESET** → a bootloader visszaesik a `factory`-ra (launcher), módosítatlan
   appokkal is;
 - **kooperatív** módon az app a `return_to_launcher()` helperrel (lásd
-  [`../app-template/`](../app-template/)) azonnal visszaléphet egy gombról.
+  [`apps/template/`](../../apps/template/)) azonnal visszaléphet egy gombról.
 
-> A saját, betölthető appokhoz használd az [app-sablont](../app-template/):
-> közös partíciótábla + `return_to_launcher()` helper.
+> A saját, betölthető appokhoz használd az [app-sablont](../../apps/template/):
+> közös partíciótábla + `return_to_launcher()` helper. A kész appok az `apps/`
+> mappában (pl. `apps/serial-terminal/`).
 
 ## Mit csinál most (M3)
 

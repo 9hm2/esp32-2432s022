@@ -202,7 +202,8 @@ hogy minden app biztosan kompatibilis legyen a launcherrel:
 - **(Opcionális) önérvényesítés tiltása**: az app NE hívja a
   `esp_ota_mark_app_valid_cancel_rollback()`-ot, hogy a RESET-es rollback is
   működjön. (Arduino appoknál ez alapból így van.)
-- A sablon a repóban pl. `firmware/app-template/` alatt élhet.
+- A sablon a repóban az `apps/template/` alatt él; a kész appok szintén az
+  `apps/` mappában (pl. `apps/serial-terminal/`).
 
 ## 12. Kockázatok
 
