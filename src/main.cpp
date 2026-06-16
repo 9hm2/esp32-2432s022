@@ -102,29 +102,10 @@ static void doFlashAndBoot()
     }
 }
 
-void setup()
+// Az SD-csatolást és az app-keresést a loop()-ból, az ELSO render UTÁN végezzük,
+// hogy a launcher UI biztosan megjelenjen akkor is, ha az SD lassú/hiányzik.
+static void doSdSetup()
 {
-    Serial.begin(115200);
-    delay(300);
-    Serial.println("\n\n=== SD-bootloader (launcher) ===");
-    Serial.println("[1] partitions");
-    printPartitions();
-
-    // Kijelző + touch + LVGL
-    Serial.println("[2] smartdisplay_init");
-    smartdisplay_init();
-    display_force_on();
-    lv_display_set_rotation(lv_display_get_default(), LV_DISPLAY_ROTATION_0);
-
-    Serial.println("[3] launcher_ui_init");
-    launcher_ui_init();
-
-    // A launcher UI azonnali kirajzolása MÉG az SD elott, hogy akkor is legyen
-    // kép, ha az SD-lépés lassú/elakad (és lássuk, eddig eljutott-e).
-    Serial.println("[4] elso render");
-    lv_refr_now(NULL);
-
-    // SD csatolás + app-keresés
     Serial.println("[5] SD-kartya csatolasa...");
     if (!sdInit(SD_CS))
     {
@@ -132,7 +113,6 @@ void setup()
         launcher_ui_set_apps(nullptr, 0, onAppSelected);
         launcher_ui_show_message("Nincs SD-kartya",
                                  "Helyezz be egy FAT32 kartyat /apps/*.bin fajlokkal, majd RESET.");
-        lv_refr_now(NULL);
         return;
     }
     Serial.printf("    SD csatolva. Meret: %llu MB\n", SD.cardSize() / (1024ull * 1024ull));
@@ -144,10 +124,30 @@ void setup()
 
     Serial.printf("    %u darab .bin talalva.\n", (unsigned)app_count);
     launcher_ui_set_apps(apps, app_count, onAppSelected);
-    Serial.println("[7] setup kesz");
+    Serial.println("[7] SD kesz");
+}
+
+void setup()
+{
+    Serial.begin(115200);
+    delay(300);
+    Serial.println("\n\n=== SD-bootloader (launcher) ===");
+    Serial.println("[1] partitions");
+    printPartitions();
+
+    // Kijelző + touch + LVGL (a demóval azonos út)
+    Serial.println("[2] smartdisplay_init");
+    smartdisplay_init();
+    display_force_on();
+    lv_display_set_rotation(lv_display_get_default(), LV_DISPLAY_ROTATION_0);
+
+    Serial.println("[3] launcher_ui_init");
+    launcher_ui_init();
+    Serial.println("[4] setup kesz (SD a loopban)");
 }
 
 static uint32_t last_tick = 0;
+static bool sd_done = false;
 
 void loop()
 {
@@ -156,9 +156,16 @@ void loop()
         last_tick = now;
     lv_tick_inc(now - last_tick);
     last_tick = now;
-    lv_timer_handler();
+    lv_timer_handler(); // elobb rajzol (a UI megjelenik)
 
-    // A flashelést a fő ciklusban végezzük (nem az esemenykezelőben).
+    // Az SD-t csak az elso render után, egyszer csatoljuk.
+    if (!sd_done)
+    {
+        sd_done = true;
+        doSdSetup();
+    }
+
+    // A flashelést a fo ciklusban végezzük (nem az esemenykezelőben).
     if (flash_requested)
     {
         flash_requested = false;
