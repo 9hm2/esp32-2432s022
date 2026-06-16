@@ -65,25 +65,25 @@ static void onAppSelected(const AppEntry &app)
     flash_requested = true;
 }
 
-// OTA folyamat -> progress bar frissítés (csak ha változott a százalék).
+// OTA folyamat -> CSAK soros kiírás (a kijelzohöz flashelés közben NEM nyúlunk,
+// mert az LVGL flush a kijelzo-DMA-ra várna, amit a flash-írások kiéheztetnek).
 static void onFlashProgress(uint32_t written, uint32_t total, void *)
 {
-    uint8_t pct = total ? (uint8_t)(((uint64_t)written * 100) / total) : 0;
-    static int lastPct = -1;
-    if ((int)pct == lastPct)
-        return;
-    lastPct = pct;
-    char buf[48];
-    snprintf(buf, sizeof(buf), "%u%%  (%u/%u KB)", pct,
-             (unsigned)(written / 1024), (unsigned)(total / 1024));
-    launcher_ui_progress_update(pct, buf);
+    static uint32_t lastKB = 0;
+    uint32_t kb = written / 1024;
+    if (kb - lastKB >= 32 || written >= total)
+    {
+        lastKB = kb;
+        Serial.printf("OTA %u / %u KB\n", (unsigned)kb, (unsigned)(total / 1024));
+    }
 }
 
 // A kért app beírása az ota_0-ba és átindítás rá (a loop()-ból hívva).
 static void doFlashAndBoot()
 {
     Serial.printf("Flashing: %s ...\n", pending_app.path.c_str());
-    launcher_ui_progress_begin("Flashing...");
+    // Statikus üzenet (egyszer kirajzolva); flashelés alatt nincs több render.
+    launcher_ui_progress_begin("Flashing app...\nplease wait, do not power off");
 
     OtaResult r = ota_flash_app(pending_app, onFlashProgress, nullptr);
 
@@ -92,9 +92,6 @@ static void doFlashAndBoot()
     if (r == OTA_OK)
     {
         Serial.println("Flash OK -> rebooting into app.");
-        launcher_ui_show_message("Done",
-                                 "Loaded, starting app.\nRESET = back here.");
-        lv_refr_now(NULL);
         ota_reboot(); // does not return
     }
     else
