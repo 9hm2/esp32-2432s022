@@ -10,6 +10,11 @@ static app_selected_cb_t s_cb = nullptr;
 static lv_obj_t *s_list = nullptr;   // a görgethető applista
 static lv_obj_t *s_status = nullptr; // alsó állapotsor
 
+// Folyamatjelző overlay elemei.
+static lv_obj_t *s_prog_overlay = nullptr;
+static lv_obj_t *s_prog_bar = nullptr;
+static lv_obj_t *s_prog_label = nullptr;
+
 // --- Egy listaelem megnyomása ---------------------------------------------
 
 static void app_button_clicked_cb(lv_event_t *e)
@@ -133,4 +138,62 @@ void launcher_ui_show_message(const char *title, const char *msg)
     lv_obj_t *ok_lbl = lv_label_create(ok);
     lv_label_set_text(ok_lbl, "OK");
     lv_obj_center(ok_lbl);
+}
+
+void launcher_ui_progress_begin(const char *title)
+{
+    launcher_ui_progress_end(); // ha maradt volna korábbi
+
+    s_prog_overlay = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(s_prog_overlay, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(s_prog_overlay, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_prog_overlay, LV_OPA_60, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_prog_overlay, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_prog_overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *panel = lv_obj_create(s_prog_overlay);
+    lv_obj_set_size(panel, 210, 150);
+    lv_obj_center(panel);
+    lv_obj_set_style_bg_color(panel, lv_color_hex(0x1c2530), LV_PART_MAIN);
+    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(panel, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *t = lv_label_create(panel);
+    lv_label_set_text(t, title);
+    lv_obj_set_style_text_color(t, lv_color_hex(0xFFD400), LV_PART_MAIN);
+    lv_obj_set_style_text_font(t, &lv_font_montserrat_16, LV_PART_MAIN);
+
+    s_prog_bar = lv_bar_create(panel);
+    lv_obj_set_size(s_prog_bar, LV_PCT(100), 18);
+    lv_bar_set_range(s_prog_bar, 0, 100);
+    lv_bar_set_value(s_prog_bar, 0, LV_ANIM_OFF);
+
+    s_prog_label = lv_label_create(panel);
+    lv_label_set_text(s_prog_label, "0%");
+    lv_obj_set_style_text_color(s_prog_label, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
+
+    lv_refr_now(NULL);
+}
+
+void launcher_ui_progress_update(uint8_t pct, const char *text)
+{
+    if (!s_prog_overlay)
+        return;
+    if (pct > 100)
+        pct = 100;
+    lv_bar_set_value(s_prog_bar, pct, LV_ANIM_OFF);
+    lv_label_set_text(s_prog_label, text);
+    lv_refr_now(NULL); // azonnali rajzolás, mert a flashelés blokkol
+}
+
+void launcher_ui_progress_end()
+{
+    if (s_prog_overlay)
+    {
+        lv_obj_delete(s_prog_overlay);
+        s_prog_overlay = nullptr;
+        s_prog_bar = nullptr;
+        s_prog_label = nullptr;
+    }
 }

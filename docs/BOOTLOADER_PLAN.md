@@ -153,7 +153,7 @@ kerülhet, hogy a két dolog ne keveredjen.)
 |---|---|---|---|
 | **M1** ✅ | Alapok | partíciótábla + factory launcher bebootol; SD mount; `.bin` lista a **soros porton** | listázza a fájlokat UART-on — **kész** (`firmware/bootloader/`, fordul) |
 | **M2** ✅ | GUI lista | LVGL görgethető lista a `.bin`-ekről, touch-kiválasztás | a képernyőn látszik és válaszható a lista — **kész** (fordul) |
-| **M3** | PoC flash-and-boot | egy **fix** `.bin` SD→ota_0 másolás + boot | egy ismert app elindul SD-ről |
+| **M3** ✅ | flash-and-boot | `.bin` SD→ota_0 másolás (`esp_ota_*`) + boot, progress + validáció | menüből indítható app — **kész** (fordul) |
 | **M4** | Teljes folyamat | GUI-ból indítás + progress + hibakezelés | tetszőleges (kompatibilis) app indítható menüből |
 | **M5** | Vissza a menübe | rollback élesítés, RESET → launcher | app után RESET visszahozza a menüt |
 | **M6** | Csiszolás | ikonok, rendezés, manifest, beállítások, flash-cache | „termék" élmény |

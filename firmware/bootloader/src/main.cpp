@@ -10,6 +10,7 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 
+#include "ota_runner.h"
 #include "sd_apps.h"
 #include "ui/launcher_ui.h"
 
@@ -37,17 +38,54 @@ static void printPartitions()
                       (unsigned)ota0->address, (unsigned)(ota0->size / 1024));
 }
 
+// A kiválasztott app flashelésére váró kérés (a tényleges munka a loop()-ban
+// fut, nem az LVGL eseménykezelőben).
+static AppEntry pending_app;
+static volatile bool flash_requested = false;
+
 // Akkor hívódik, amikor a felhasználó appot választ a listából.
 static void onAppSelected(const AppEntry &app)
 {
     Serial.printf("Kivalasztva: %s (%s) -> %s\n", app.name.c_str(),
                   humanSize(app.size).c_str(), app.path.c_str());
+    pending_app = app;
+    flash_requested = true;
+}
 
-    char msg[160];
-    snprintf(msg, sizeof(msg),
-             "%s\nMeret: %s\n\nA flashelés es futtatás az M3-ban jon.",
-             app.name.c_str(), humanSize(app.size).c_str());
-    launcher_ui_show_message("Kivalasztva", msg);
+// OTA folyamat -> progress bar frissítés.
+static void onFlashProgress(uint32_t written, uint32_t total, void *)
+{
+    uint8_t pct = total ? (uint8_t)(((uint64_t)written * 100) / total) : 0;
+    char buf[48];
+    snprintf(buf, sizeof(buf), "%u%%  (%u/%u KB)", pct,
+             (unsigned)(written / 1024), (unsigned)(total / 1024));
+    launcher_ui_progress_update(pct, buf);
+}
+
+// A kért app beírása az ota_0-ba és átindítás rá (a loop()-ból hívva).
+static void doFlashAndBoot()
+{
+    Serial.printf("Flashelés: %s ...\n", pending_app.path.c_str());
+    launcher_ui_progress_begin("Flashelés...");
+
+    OtaResult r = ota_flash_app(pending_app, onFlashProgress, nullptr);
+
+    launcher_ui_progress_end();
+
+    if (r == OTA_OK)
+    {
+        Serial.println("Flashelés OK -> ujraindulas az appba.");
+        launcher_ui_show_message("Kész", "Az app betoltve.\nUjraindulas...");
+        lv_refr_now(NULL);
+        ota_reboot(); // nem ter vissza
+    }
+    else
+    {
+        Serial.printf("Flashelés HIBA: %s\n", ota_result_str(r));
+        char m[128];
+        snprintf(m, sizeof(m), "Nem sikerult:\n%s", ota_result_str(r));
+        launcher_ui_show_message("Sikertelen", m);
+    }
 }
 
 void setup()
@@ -90,5 +128,13 @@ void loop()
     lv_tick_inc(now - last_tick);
     last_tick = now;
     lv_timer_handler();
+
+    // A flashelést a fő ciklusban végezzük (nem az esemenykezelőben).
+    if (flash_requested)
+    {
+        flash_requested = false;
+        doFlashAndBoot();
+    }
+
     delay(5);
 }

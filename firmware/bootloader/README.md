@@ -5,27 +5,33 @@ Az ESP32-2432S022C-re készülő, érintőképernyős **app-indító**. SD-kárt
 
 A teljes tervet lásd: [`../../docs/BOOTLOADER_PLAN.md`](../../docs/BOOTLOADER_PLAN.md).
 
-## Állapot: M2 ✅
+## Állapot: M3 ✅
 
 | Mérföldkő | Tartalom | Állapot |
 |---|---|---|
 | **M1** | partíciótábla + SD mount + `.bin` listázás soros porton | ✅ kész |
-| **M2** | LVGL lista GUI (érintéssel) | ✅ kész (fordul) |
-| M3 | OTA flash-and-boot (PoC) | hátravan |
-| M4 | teljes folyamat GUI-val | hátravan |
+| **M2** | LVGL lista GUI (érintéssel) | ✅ kész |
+| **M3** | OTA flash-and-boot | ✅ kész (fordul) |
+| M4 | teljes folyamat GUI-val (megerősítés, csiszolás) | részben kész |
 | M5 | vissza a menübe (rollback + kooperatív) | hátravan |
 | M6 | csiszolás | hátravan |
 
-## Mit csinál most (M2)
+## Mit csinál most (M3)
 
 Bootkor a launcher (factory partíció):
 1. soros portra kiírja a partíció-elrendezést (futó / ota_0),
 2. inicializálja a kijelzőt + touch-ot + LVGL-t (smartdisplay),
 3. csatolja az SD-kártyát (SPI: CS=5, SCK=18, MISO=19, MOSI=23),
 4. **érintőképernyős listában** mutatja az `/apps/*.bin` fájlokat (név + méret),
-5. koppintásra visszajelez (a tényleges flashelés az M3).
+5. egy appra koppintva **beírja az `ota_0` partícióba** (`esp_ota_*`),
+   **progress bar**-ral, majd **átindít** az appra.
 
-Hibák (nincs SD / nincs `.bin`) modális üzenetben jelennek meg.
+Validáció flashelés előtt: image-magic (`0xE9`), méret ≤ `ota_0`, az `esp_ota_end`
+a beágyazott **SHA-256**-ot is ellenőrzi. Hibák (nincs SD / nincs `.bin` / rossz
+image / túl nagy / írási hiba) modális üzenetben jelennek meg.
+
+> **Megjegyzés (M5):** az appból a menübe való visszatérés (rollback / kooperatív
+> „Vissza") még nincs kész — jelenleg az indított app marad a boot-partíció.
 
 ## SD-kártya elrendezés
 
