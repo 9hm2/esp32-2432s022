@@ -10,12 +10,28 @@ static constexpr int8_t SD_MOSI = 23;
 
 bool sdInit(uint8_t csPin)
 {
-    // Explicit SPI init, hogy biztosan a helyes lábakat használjuk.
-    SPI.begin(SD_SCK, SD_MISO, SD_MOSI, csPin);
+    // Az SPI buszt csak egyszer indítjuk (hotplug-poll miatt sokszor hívódhat).
+    static bool spiBegun = false;
+    if (!spiBegun)
+    {
+        SPI.begin(SD_SCK, SD_MISO, SD_MOSI, csPin);
+        spiBegun = true;
+    }
     if (!SD.begin(csPin, SPI))
         return false;
 
     return SD.cardType() != CARD_NONE;
+}
+
+bool sdPresent()
+{
+    // Gyors jelenlét-ellenorzes: a gyökér megnyitása. Kivett kártyánál hibázik.
+    File root = SD.open("/");
+    if (!root)
+        return false;
+    bool ok = root.isDirectory();
+    root.close();
+    return ok;
 }
 
 // Kisbetűsíti és ellenőrzi, hogy ".bin"-re végződik-e a név.

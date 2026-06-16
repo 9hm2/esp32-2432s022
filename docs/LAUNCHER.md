@@ -54,6 +54,13 @@ image / túl nagy / írási hiba) modális üzenetben jelennek meg.
 - A `.bin` az **app-image** legyen (a normál build `0x10000`-re kerülő `.bin`-je),
   **nem** a „merged/full flash" kép. Részletek a tervben.
 
+### Hotplug
+A launcher **bármikor** észleli a kártya behelyezését/kivételét (~0,6 mp-enként
+pollozva, hardveres card-detect láb nélkül, szoftveresen):
+- behelyezéskor automatikusan **csatol és frissíti az applistát**,
+- kivételkor **leválaszt** és „No SD card" üzenetet mutat.
+Nem kell RESET a kártyacseréhez. (Flashelés közben a poll szünetel.)
+
 ## Build & feltöltés
 
 A launcher a repó **gyökér** PlatformIO projektje, ezért a gyökérbol:

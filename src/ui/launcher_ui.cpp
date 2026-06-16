@@ -101,6 +101,17 @@ void launcher_ui_set_apps(const AppEntry *apps, size_t count, app_selected_cb_t 
     lv_label_set_text_fmt(s_status, "%u app(s)  -  tap to run", (unsigned)count);
 }
 
+void launcher_ui_no_sd()
+{
+    s_apps = nullptr;
+    s_app_count = 0;
+    lv_obj_clean(s_list);
+    lv_obj_t *l = lv_label_create(s_list);
+    lv_label_set_text(l, LV_SYMBOL_SD_CARD "  No SD card\nInsert it to list apps");
+    lv_obj_set_style_text_color(l, lv_color_hex(0xA0A8B0), LV_PART_MAIN);
+    lv_label_set_text(s_status, "no SD card");
+}
+
 void launcher_ui_show_message(const char *title, const char *msg)
 {
     // Félig átlátszó háttér a felső rétegen (modális hatás).

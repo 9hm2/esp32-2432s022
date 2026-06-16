@@ -13,6 +13,9 @@ void launcher_ui_init();
 // Az 'apps' tömbnek a hívás után is élnie kell (a UI az indexet tárolja).
 void launcher_ui_set_apps(const AppEntry *apps, size_t count, app_selected_cb_t cb);
 
+// "Nincs SD-kártya" állapot a listában (hotplug: kivett kártyánál).
+void launcher_ui_no_sd();
+
 // Egyszerű modális üzenet (cím + szöveg + OK). Hibákhoz / visszajelzéshez.
 void launcher_ui_show_message(const char *title, const char *msg);
 

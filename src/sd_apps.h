@@ -16,6 +16,9 @@ struct AppEntry {
 // true, ha a kártya sikeresen csatolva lett.
 bool sdInit(uint8_t csPin);
 
+// Gyors ellenorzes, hogy a kártya jelen van-e (hotplug figyeléshez).
+bool sdPresent();
+
 // .bin fájlok keresése a megadott könyvtárban (nem rekurzív).
 // A találatokat az 'out' tömbbe írja, legfeljebb 'maxOut' darabot.
 // Visszaadja a ténylegesen megtalált fájlok számát.

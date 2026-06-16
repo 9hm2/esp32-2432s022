@@ -102,29 +102,39 @@ static void doFlashAndBoot()
     }
 }
 
-// Az SD-csatolást és az app-keresést a loop()-ból, az ELSO render UTÁN végezzük,
-// hogy a launcher UI biztosan megjelenjen akkor is, ha az SD lassú/hiányzik.
-static void doSdSetup()
-{
-    Serial.println("[5] mounting SD card...");
-    if (!sdInit(SD_CS))
-    {
-        Serial.println("    ERROR: SD card cannot be mounted.");
-        launcher_ui_set_apps(nullptr, 0, onAppSelected);
-        launcher_ui_show_message("No SD card",
-                                 "Insert a FAT32 card with /apps/*.bin files, then RESET.");
-        return;
-    }
-    Serial.printf("    SD mounted. Size: %llu MB\n", SD.cardSize() / (1024ull * 1024ull));
+// Az SD aktuális állapota (hotplug).
+static bool sd_mounted = false;
 
-    Serial.println("[6] scanApps");
+// (Újra)olvassa az app-listát a csatolt kártyáról.
+static void sdRescan()
+{
     app_count = scanApps(APPS_DIR, apps, MAX_APPS);
     if (app_count == 0)
         app_count = scanApps("/", apps, MAX_APPS);
-
-    Serial.printf("    %u .bin file(s) found.\n", (unsigned)app_count);
+    Serial.printf("SD: %u .bin file(s) found.\n", (unsigned)app_count);
     launcher_ui_set_apps(apps, app_count, onAppSelected);
-    Serial.println("[7] SD done");
+}
+
+// Hotplug-figyelés: behelyezéskor csatol + listáz, kivételkor leválaszt + jelez.
+static void pollSd()
+{
+    if (!sd_mounted)
+    {
+        if (sdInit(SD_CS)) // sikeres -> kártya behelyezve
+        {
+            sd_mounted = true;
+            Serial.printf("SD inserted (%llu MB).\n",
+                          SD.cardSize() / (1024ull * 1024ull));
+            sdRescan();
+        }
+    }
+    else if (!sdPresent()) // eltunt -> kivették
+    {
+        sd_mounted = false;
+        SD.end();
+        Serial.println("SD removed.");
+        launcher_ui_no_sd();
+    }
 }
 
 void setup()
@@ -132,22 +142,19 @@ void setup()
     Serial.begin(115200);
     delay(300);
     Serial.println("\n\n=== SD-bootloader (launcher) ===");
-    Serial.println("[1] partitions");
     printPartitions();
 
     // Kijelző + touch + LVGL (a demóval azonos út)
-    Serial.println("[2] smartdisplay_init");
     smartdisplay_init();
     display_force_on();
     lv_display_set_rotation(lv_display_get_default(), LV_DISPLAY_ROTATION_0);
 
-    Serial.println("[3] launcher_ui_init");
     launcher_ui_init();
-    Serial.println("[4] setup done (SD in loop)");
+    launcher_ui_no_sd(); // induló állapot, amíg a kártyát nem érzékeljük
 }
 
 static uint32_t last_tick = 0;
-static bool sd_done = false;
+static uint32_t last_sd_check = 0;
 
 void loop()
 {
@@ -156,13 +163,13 @@ void loop()
         last_tick = now;
     lv_tick_inc(now - last_tick);
     last_tick = now;
-    lv_timer_handler(); // elobb rajzol (a UI megjelenik)
+    lv_timer_handler();
 
-    // Az SD-t csak az elso render után, egyszer csatoljuk.
-    if (!sd_done)
+    // SD hotplug-poll ~600 ms-onként (de nem flashelés közben).
+    if (!flash_requested && now - last_sd_check > 600)
     {
-        sd_done = true;
-        doSdSetup();
+        last_sd_check = now;
+        pollSd();
     }
 
     // A flashelést a fo ciklusban végezzük (nem az esemenykezelőben).
