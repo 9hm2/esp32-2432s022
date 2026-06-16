@@ -158,17 +158,51 @@ kerülhet, hogy a két dolog ne keveredjen.)
 | **M5** | Vissza a menübe | rollback élesítés, RESET → launcher | app után RESET visszahozza a menüt |
 | **M6** | Csiszolás | ikonok, rendezés, manifest, beállítások, flash-cache | „termék" élmény |
 
-## 11. Nyitott kérdések / döntést igénylő pontok
+## 11. Döntések (rögzítve) és még nyitott pontok
 
-1. **A `.bin`-ek forrása**: te buildeled őket erre a launcherre (OTA app,
-   partíció-illesztéssel) **vagy** tetszőleges, máshonnan letöltött bin?
-   → app-`.bin` kell, OTA-kompatibilis; a megkötéseket lásd a 2. pontban.
-2. **Visszatérés módja**: elég a **rollback + RESET** (módosítatlan appok), vagy
-   kell a **kooperatív „Vissza" gomb** is az appokban?
+**Rögzített döntések:**
+1. ✅ **A `.bin`-ek forrása: saját, erre a launcherre buildelt appok** (OTA app
+   `.bin`, a 4. pont partíció-elrendezésével). Ez a legmegbízhatóbb: a kód és az
+   adat-partíciók is passzolnak. → Lásd a 11/a pontot (app-sablon).
+2. ✅ **Visszatérés a menübe: MINDKÉT mód.** Alapból a **rollback + RESET**
+   (akkor is működik, ha az app nem tartalmaz semmit), és emellett **kooperatív
+   „Vissza a launcherbe" helper** is elérhető, amit az app beépíthet egy gombra.
+
+**Még nyitott (a megvalósításkor eldöntendő):**
 3. **App méretkorlát ~2.3 MB** elfogadható? (4 MB flash miatt ez a határ.)
-4. **Flash-cache** kell-e (ne flasheljen újra azonos appot), vagy mindig SD-ről?
-5. **App-adatok**: kell-e közös NVS/SPIFFS az appoknak, vagy tisztán önállóak?
-6. **Külön projekt vs. külön PlatformIO env** a meglévő repón belül?
+4. **Flash-cache** kell-e (ne flasheljen újra azonos appot SHA alapján), vagy
+   mindig SD-ről?
+5. **App-adatok**: kell-e közös NVS/SPIFFS-terület az appoknak (a partíciótáblában
+   előre lefoglalva), vagy tisztán önállóak?
+6. **Külön projekt vs. külön PlatformIO env** a meglévő repón belül a launcherhez.
+
+### 11/a. App-sablon (mert saját appokat buildelünk) — tervezett deliverable
+
+Mivel a `.bin`-eket magunk fordítjuk, érdemes egy **közös app-sablont** adni,
+hogy minden app biztosan kompatibilis legyen a launcherrel:
+
+- **Közös `partitions.csv`** (a 4. pontból) — minden app *ugyanazzal* a
+  partíciótáblával épüljön, hogy az ota_0 offset/méret és az esetleges közös
+  adat-partíciók egyezzenek.
+- **`platformio.ini` szelet** az appokhoz: `board = esp32-2432S022C`, ugyanaz a
+  partíciótábla, rollback engedélyezve.
+- **„Vissza a launcherbe" helper** (a kooperatív módhoz), pl.:
+
+  ```cpp
+  // visszaer a launcherhez: a factory-t allitja boot-partiicionak, majd reset
+  #include <esp_ota_ops.h>
+  void return_to_launcher() {
+      const esp_partition_t *factory = esp_partition_find_first(
+          ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, NULL);
+      if (factory) esp_ota_set_boot_partition(factory);
+      esp_restart();
+  }
+  ```
+
+- **(Opcionális) önérvényesítés tiltása**: az app NE hívja a
+  `esp_ota_mark_app_valid_cancel_rollback()`-ot, hogy a RESET-es rollback is
+  működjön. (Arduino appoknál ez alapból így van.)
+- A sablon a repóban pl. `firmware/app-template/` alatt élhet.
 
 ## 12. Kockázatok
 
