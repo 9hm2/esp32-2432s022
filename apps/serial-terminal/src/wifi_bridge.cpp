@@ -105,6 +105,9 @@ int wifi_bridge_read(uint8_t *out, int max)
         if (s_iac == 0)
         {
             if (b == 255) { s_iac = 1; continue; }
+            // A telnet az Enter-t CR+NUL-ként küldi; a NUL-t (0x00) eldobjuk,
+            // különben a Pi-be kerül (pl. Python "null bytes" hibát ad).
+            if (b == 0) continue;
             out[n++] = (uint8_t)b;
         }
         else if (s_iac == 1)
