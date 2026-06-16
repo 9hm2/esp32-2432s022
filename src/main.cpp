@@ -41,7 +41,7 @@ static void printPartitions()
 {
     const esp_partition_t *running = esp_ota_get_running_partition();
     if (running)
-        Serial.printf("Futo particio : %-8s @ 0x%06x (%u KB)\n", running->label,
+        Serial.printf("Running part. : %-8s @ 0x%06x (%u KB)\n", running->label,
                       (unsigned)running->address, (unsigned)(running->size / 1024));
 
     const esp_partition_t *ota0 = esp_partition_find_first(
@@ -59,7 +59,7 @@ static volatile bool flash_requested = false;
 // Akkor hívódik, amikor a felhasználó appot választ a listából.
 static void onAppSelected(const AppEntry &app)
 {
-    Serial.printf("Kivalasztva: %s (%s) -> %s\n", app.name.c_str(),
+    Serial.printf("Selected: %s (%s) -> %s\n", app.name.c_str(),
                   humanSize(app.size).c_str(), app.path.c_str());
     pending_app = app;
     flash_requested = true;
@@ -78,8 +78,8 @@ static void onFlashProgress(uint32_t written, uint32_t total, void *)
 // A kért app beírása az ota_0-ba és átindítás rá (a loop()-ból hívva).
 static void doFlashAndBoot()
 {
-    Serial.printf("Flashelés: %s ...\n", pending_app.path.c_str());
-    launcher_ui_progress_begin("Flashelés...");
+    Serial.printf("Flashing: %s ...\n", pending_app.path.c_str());
+    launcher_ui_progress_begin("Flashing...");
 
     OtaResult r = ota_flash_app(pending_app, onFlashProgress, nullptr);
 
@@ -87,18 +87,18 @@ static void doFlashAndBoot()
 
     if (r == OTA_OK)
     {
-        Serial.println("Flashelés OK -> ujraindulas az appba.");
-        launcher_ui_show_message("Kész",
-                                 "Betoltve, indul az app.\nRESET = vissza ide.");
+        Serial.println("Flash OK -> rebooting into app.");
+        launcher_ui_show_message("Done",
+                                 "Loaded, starting app.\nRESET = back here.");
         lv_refr_now(NULL);
-        ota_reboot(); // nem ter vissza
+        ota_reboot(); // does not return
     }
     else
     {
-        Serial.printf("Flashelés HIBA: %s\n", ota_result_str(r));
+        Serial.printf("Flash ERROR: %s\n", ota_result_str(r));
         char m[128];
-        snprintf(m, sizeof(m), "Nem sikerult:\n%s", ota_result_str(r));
-        launcher_ui_show_message("Sikertelen", m);
+        snprintf(m, sizeof(m), "Failed:\n%s", ota_result_str(r));
+        launcher_ui_show_message("Failed", m);
     }
 }
 
@@ -106,25 +106,25 @@ static void doFlashAndBoot()
 // hogy a launcher UI biztosan megjelenjen akkor is, ha az SD lassú/hiányzik.
 static void doSdSetup()
 {
-    Serial.println("[5] SD-kartya csatolasa...");
+    Serial.println("[5] mounting SD card...");
     if (!sdInit(SD_CS))
     {
-        Serial.println("    HIBA: az SD-kartya nem csatolhato.");
+        Serial.println("    ERROR: SD card cannot be mounted.");
         launcher_ui_set_apps(nullptr, 0, onAppSelected);
-        launcher_ui_show_message("Nincs SD-kartya",
-                                 "Helyezz be egy FAT32 kartyat /apps/*.bin fajlokkal, majd RESET.");
+        launcher_ui_show_message("No SD card",
+                                 "Insert a FAT32 card with /apps/*.bin files, then RESET.");
         return;
     }
-    Serial.printf("    SD csatolva. Meret: %llu MB\n", SD.cardSize() / (1024ull * 1024ull));
+    Serial.printf("    SD mounted. Size: %llu MB\n", SD.cardSize() / (1024ull * 1024ull));
 
     Serial.println("[6] scanApps");
     app_count = scanApps(APPS_DIR, apps, MAX_APPS);
     if (app_count == 0)
         app_count = scanApps("/", apps, MAX_APPS);
 
-    Serial.printf("    %u darab .bin talalva.\n", (unsigned)app_count);
+    Serial.printf("    %u .bin file(s) found.\n", (unsigned)app_count);
     launcher_ui_set_apps(apps, app_count, onAppSelected);
-    Serial.println("[7] SD kesz");
+    Serial.println("[7] SD done");
 }
 
 void setup()
@@ -143,7 +143,7 @@ void setup()
 
     Serial.println("[3] launcher_ui_init");
     launcher_ui_init();
-    Serial.println("[4] setup kesz (SD a loopban)");
+    Serial.println("[4] setup done (SD in loop)");
 }
 
 static uint32_t last_tick = 0;

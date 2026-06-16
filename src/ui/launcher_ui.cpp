@@ -68,7 +68,7 @@ void launcher_ui_init()
     s_status = lv_label_create(screen);
     lv_obj_set_style_text_color(s_status, lv_color_hex(0x70C0FF), LV_PART_MAIN);
     lv_obj_set_style_text_font(s_status, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_label_set_text(s_status, "indul...");
+    lv_label_set_text(s_status, "starting...");
     lv_obj_align(s_status, LV_ALIGN_BOTTOM_MID, 0, -6);
 }
 
@@ -83,9 +83,9 @@ void launcher_ui_set_apps(const AppEntry *apps, size_t count, app_selected_cb_t 
     if (count == 0)
     {
         lv_obj_t *empty = lv_label_create(s_list);
-        lv_label_set_text(empty, LV_SYMBOL_WARNING "  Nincs .bin az SD-n");
+        lv_label_set_text(empty, LV_SYMBOL_WARNING "  No .bin on SD card");
         lv_obj_set_style_text_color(empty, lv_color_hex(0xA0A8B0), LV_PART_MAIN);
-        lv_label_set_text(s_status, "0 app");
+        lv_label_set_text(s_status, "0 apps");
         return;
     }
 
@@ -98,7 +98,7 @@ void launcher_ui_set_apps(const AppEntry *apps, size_t count, app_selected_cb_t 
                             (void *)(uintptr_t)i);
     }
 
-    lv_label_set_text_fmt(s_status, "%u app  -  koppints a futtatashoz", (unsigned)count);
+    lv_label_set_text_fmt(s_status, "%u app(s)  -  tap to run", (unsigned)count);
 }
 
 void launcher_ui_show_message(const char *title, const char *msg)

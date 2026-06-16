@@ -16,17 +16,17 @@ const char *ota_result_str(OtaResult r)
     switch (r)
     {
     case OTA_OK:          return "OK";
-    case OTA_ERR_OPEN:    return "a fajl nem nyithato meg";
-    case OTA_ERR_EMPTY:   return "ures fajl";
-    case OTA_ERR_MAGIC:   return "nem ESP app-image (rossz magic)";
-    case OTA_ERR_TOO_BIG: return "tul nagy az ota_0 particiohoz";
-    case OTA_ERR_NO_PART: return "nincs ota_0 particio";
-    case OTA_ERR_BEGIN:   return "esp_ota_begin hiba";
-    case OTA_ERR_READ:    return "SD olvasasi hiba";
-    case OTA_ERR_WRITE:   return "flash iras hiba";
-    case OTA_ERR_END:     return "image ellenorzes hiba (SHA-256?)";
-    case OTA_ERR_SETBOOT: return "boot-particio beallitas hiba";
-    default:              return "ismeretlen hiba";
+    case OTA_ERR_OPEN:    return "cannot open file";
+    case OTA_ERR_EMPTY:   return "empty file";
+    case OTA_ERR_MAGIC:   return "not an ESP app image (bad magic)";
+    case OTA_ERR_TOO_BIG: return "too big for ota_0 partition";
+    case OTA_ERR_NO_PART: return "no ota_0 partition";
+    case OTA_ERR_BEGIN:   return "esp_ota_begin error";
+    case OTA_ERR_READ:    return "SD read error";
+    case OTA_ERR_WRITE:   return "flash write error";
+    case OTA_ERR_END:     return "image verify error (SHA-256?)";
+    case OTA_ERR_SETBOOT: return "set boot partition error";
+    default:              return "unknown error";
     }
 }
 

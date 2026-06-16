@@ -51,7 +51,7 @@ static void update_status()
 {
     static const char *le_short[] = {"-", "LF", "CRLF", "CR"};
     if (vt.scroll() > 0)
-        lv_label_set_text_fmt(status_lbl, LV_SYMBOL_UP " SCROLL -%d/%d  (huzd le)",
+        lv_label_set_text_fmt(status_lbl, LV_SYMBOL_UP " SCROLL -%d/%d  (drag)",
                               vt.scroll(), vt.scrollbackCount());
     else
         lv_label_set_text_fmt(status_lbl,
@@ -254,7 +254,7 @@ static void show_keyboard()
 
     input_ta = lv_textarea_create(kb_overlay);
     lv_textarea_set_one_line(input_ta, true);
-    lv_textarea_set_placeholder_text(input_ta, "parancs...");
+    lv_textarea_set_placeholder_text(input_ta, "command...");
     lv_obj_set_size(input_ta, W, inH);
     lv_obj_align(input_ta, LV_ALIGN_TOP_MID, 0, 0);
 
@@ -309,11 +309,11 @@ static void bt_refresh_status()
         return;
     if (bt_connected())
         lv_label_set_text_fmt(s_bt_status,
-                              "Allapot: KAPCSOLODVA\nParositott eszkoz: %d",
+                              "Status: CONNECTED\nPaired devices: %d",
                               bt_bond_count());
     else
         lv_label_set_text_fmt(s_bt_status,
-                              "Allapot: hirdetes\nNev: %s\nParositott eszkoz: %d",
+                              "Status: advertising\nName: %s\nPaired devices: %d",
                               BT_NAME, bt_bond_count());
 }
 
@@ -380,9 +380,9 @@ static void show_bt()
     lv_obj_set_style_text_color(s_bt_status, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
     bt_refresh_status();
 
-    bt_full_btn(panel, "Ujraparositas", bt_repair_cb);
-    bt_full_btn(panel, "Parositas torlese", bt_unpair_cb);
-    bt_full_btn(panel, "Bezar", bt_close_cb);
+    bt_full_btn(panel, "Re-pair", bt_repair_cb);
+    bt_full_btn(panel, "Clear pairing", bt_unpair_cb);
+    bt_full_btn(panel, "Close", bt_close_cb);
 }
 
 static void settings_bt_cb(lv_event_t *)
@@ -426,7 +426,7 @@ static void show_settings()
                           LV_FLEX_ALIGN_CENTER);
 
     lv_obj_t *t = lv_label_create(panel);
-    lv_label_set_text(t, LV_SYMBOL_SETTINGS "  Beallitasok");
+    lv_label_set_text(t, LV_SYMBOL_SETTINGS "  Settings");
     lv_obj_set_style_text_color(t, lv_color_hex(0xFFD400), LV_PART_MAIN);
     lv_obj_set_style_text_font(t, &lv_font_montserrat_16, LV_PART_MAIN);
 
@@ -439,10 +439,10 @@ static void show_settings()
     lv_obj_set_width(dd_baud, LV_PCT(100));
 
     lv_obj_t *lb2 = lv_label_create(panel);
-    lv_label_set_text(lb2, "Sorveg (kuldeskor):");
+    lv_label_set_text(lb2, "Line ending (on send):");
     lv_obj_set_style_text_color(lb2, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
     dd_le = lv_dropdown_create(panel);
-    lv_dropdown_set_options(dd_le, "Nincs\nLF (\\n)\nCRLF (\\r\\n)\nCR (\\r)");
+    lv_dropdown_set_options(dd_le, "None\nLF (\\n)\nCRLF (\\r\\n)\nCR (\\r)");
     lv_dropdown_set_selected(dd_le, cfg.lineEnding <= 3 ? cfg.lineEnding : 1);
     lv_obj_set_width(dd_le, LV_PCT(100));
 
@@ -453,17 +453,17 @@ static void show_settings()
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_t *lb3 = lv_label_create(row);
-    lv_label_set_text(lb3, "Helyi echo");
+    lv_label_set_text(lb3, "Local echo");
     lv_obj_set_style_text_color(lb3, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
     sw_echo = lv_switch_create(row);
     if (cfg.localEcho)
         lv_obj_add_state(sw_echo, LV_STATE_CHECKED);
 
     lv_obj_t *lb4 = lv_label_create(panel);
-    lv_label_set_text(lb4, "Tajolas:");
+    lv_label_set_text(lb4, "Orientation:");
     lv_obj_set_style_text_color(lb4, lv_color_hex(0xD0D8E0), LV_PART_MAIN);
     dd_rot = lv_dropdown_create(panel);
-    lv_dropdown_set_options(dd_rot, "Allo (29 oszlop)\nFekvo (40 oszlop)");
+    lv_dropdown_set_options(dd_rot, "Portrait (29 cols)\nLandscape (40 cols)");
     lv_dropdown_set_selected(dd_rot, cfg.rotation ? 1 : 0);
     lv_obj_set_width(dd_rot, LV_PCT(100));
 
@@ -472,7 +472,7 @@ static void show_settings()
     lv_obj_set_width(kbbtn, LV_PCT(100));
     lv_obj_add_event_cb(kbbtn, settings_keyboard_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *kbl = lv_label_create(kbbtn);
-    lv_label_set_text(kbl, LV_SYMBOL_KEYBOARD "  Billentyuzet");
+    lv_label_set_text(kbl, LV_SYMBOL_KEYBOARD "  Keyboard");
     lv_obj_center(kbl);
 
     // Speciális (Fn) billentyuk elohívása
@@ -480,7 +480,7 @@ static void show_settings()
     lv_obj_set_width(fnbtn, LV_PCT(100));
     lv_obj_add_event_cb(fnbtn, settings_keys_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *fnl = lv_label_create(fnbtn);
-    lv_label_set_text(fnl, "Fn billentyuk (nyilak, Ctrl-C...)");
+    lv_label_set_text(fnl, "Fn keys (arrows, Ctrl-C...)");
     lv_obj_center(fnl);
 
     // Bluetooth (párosítás / újrapárosítás / törlés)
@@ -500,11 +500,11 @@ static void show_settings()
     lv_obj_t *cancel = lv_button_create(btnrow);
     lv_obj_add_event_cb(cancel, settings_cancel_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *cl = lv_label_create(cancel);
-    lv_label_set_text(cl, "Megse");
+    lv_label_set_text(cl, "Cancel");
     lv_obj_t *save = lv_button_create(btnrow);
     lv_obj_add_event_cb(save, settings_save_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *sl = lv_label_create(save);
-    lv_label_set_text(sl, "Mentes");
+    lv_label_set_text(sl, "Save");
 }
 
 // --- Speciális billentyuk (nyers küldés a Pi-nek) --------------------------
@@ -706,9 +706,9 @@ void setup()
 
     bt_init(BT_NAME); // BLE bemenet + hirdetés
 
-    vt.feedStr("VT100 terminal kesz.\r\n");
+    vt.feedStr("VT100 terminal ready.\r\n");
     vt.feedStr("Pi -> P1 port (TX=GPIO1, RX=GPIO3, GND).\r\n");
-    vt.feedStr("BT: " BT_NAME " (parositas a beallitasokban).\r\n\n");
+    vt.feedStr("BT: " BT_NAME " (pair in Settings).\r\n\n");
 }
 
 // BLE párosítási visszajelzések kezelése (a fo loopból).
@@ -720,8 +720,8 @@ static void bt_poll_ui()
     {
         shownPk = pk;
         char b[64];
-        snprintf(b, sizeof(b), "Kod:\n%06u\n\nIrd be a tarseszkozon", (unsigned)pk);
-        show_popup("Bluetooth parositas", b, false);
+        snprintf(b, sizeof(b), "Code:\n%06u\n\nEnter it on your device", (unsigned)pk);
+        show_popup("Bluetooth pairing", b, false);
     }
 
     bool ok;
@@ -729,7 +729,7 @@ static void bt_poll_ui()
     {
         shownPk = 0;
         close_popup();
-        show_popup("Bluetooth", ok ? "Sikeres parositas!" : "Sikertelen parositas", true);
+        show_popup("Bluetooth", ok ? "Paired successfully!" : "Pairing failed", true);
         if (s_bt_status)
             bt_refresh_status();
     }
