@@ -28,7 +28,8 @@ static constexpr int VT_MAX_COLS = 60;
 static constexpr int VT_MAX_ROWS = 40;
 
 // Visszagörgetési (scrollback) puffer sorainak száma.
-static constexpr int VT_SCROLLBACK = 120;
+// (A BLE stack statikus RAM-igénye miatt mértékkel — 80 sor jó kompromisszum.)
+static constexpr int VT_SCROLLBACK = 80;
 
 class Vt100
 {
