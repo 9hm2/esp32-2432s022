@@ -40,8 +40,9 @@ static size_t app_count = 0;
 static void printPartitions()
 {
     const esp_partition_t *running = esp_ota_get_running_partition();
-    Serial.printf("Futo particio : %-8s @ 0x%06x (%u KB)\n", running->label,
-                  (unsigned)running->address, (unsigned)(running->size / 1024));
+    if (running)
+        Serial.printf("Futo particio : %-8s @ 0x%06x (%u KB)\n", running->label,
+                      (unsigned)running->address, (unsigned)(running->size / 1024));
 
     const esp_partition_t *ota0 = esp_partition_find_first(
         ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
@@ -105,33 +106,45 @@ void setup()
 {
     Serial.begin(115200);
     delay(300);
-    Serial.println("\n\n=== SD-bootloader (launcher) - M2 ===");
+    Serial.println("\n\n=== SD-bootloader (launcher) ===");
+    Serial.println("[1] partitions");
     printPartitions();
 
     // Kijelző + touch + LVGL
+    Serial.println("[2] smartdisplay_init");
     smartdisplay_init();
     display_force_on();
     lv_display_set_rotation(lv_display_get_default(), LV_DISPLAY_ROTATION_0);
+
+    Serial.println("[3] launcher_ui_init");
     launcher_ui_init();
 
+    // A launcher UI azonnali kirajzolása MÉG az SD elott, hogy akkor is legyen
+    // kép, ha az SD-lépés lassú/elakad (és lássuk, eddig eljutott-e).
+    Serial.println("[4] elso render");
+    lv_refr_now(NULL);
+
     // SD csatolás + app-keresés
-    Serial.println("SD-kartya csatolasa...");
+    Serial.println("[5] SD-kartya csatolasa...");
     if (!sdInit(SD_CS))
     {
-        Serial.println("HIBA: az SD-kartya nem csatolhato.");
+        Serial.println("    HIBA: az SD-kartya nem csatolhato.");
         launcher_ui_set_apps(nullptr, 0, onAppSelected);
         launcher_ui_show_message("Nincs SD-kartya",
                                  "Helyezz be egy FAT32 kartyat /apps/*.bin fajlokkal, majd RESET.");
+        lv_refr_now(NULL);
         return;
     }
-    Serial.printf("SD csatolva. Meret: %llu MB\n", SD.cardSize() / (1024ull * 1024ull));
+    Serial.printf("    SD csatolva. Meret: %llu MB\n", SD.cardSize() / (1024ull * 1024ull));
 
+    Serial.println("[6] scanApps");
     app_count = scanApps(APPS_DIR, apps, MAX_APPS);
     if (app_count == 0)
         app_count = scanApps("/", apps, MAX_APPS);
 
-    Serial.printf("%u darab .bin talalva.\n", (unsigned)app_count);
+    Serial.printf("    %u darab .bin talalva.\n", (unsigned)app_count);
     launcher_ui_set_apps(apps, app_count, onAppSelected);
+    Serial.println("[7] setup kesz");
 }
 
 static uint32_t last_tick = 0;
@@ -139,6 +152,8 @@ static uint32_t last_tick = 0;
 void loop()
 {
     uint32_t now = millis();
+    if (last_tick == 0)
+        last_tick = now;
     lv_tick_inc(now - last_tick);
     last_tick = now;
     lv_timer_handler();
