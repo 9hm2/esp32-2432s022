@@ -65,10 +65,14 @@ static void onAppSelected(const AppEntry &app)
     flash_requested = true;
 }
 
-// OTA folyamat -> progress bar frissítés.
+// OTA folyamat -> progress bar frissítés (csak ha változott a százalék).
 static void onFlashProgress(uint32_t written, uint32_t total, void *)
 {
     uint8_t pct = total ? (uint8_t)(((uint64_t)written * 100) / total) : 0;
+    static int lastPct = -1;
+    if ((int)pct == lastPct)
+        return;
+    lastPct = pct;
     char buf[48];
     snprintf(buf, sizeof(buf), "%u%%  (%u/%u KB)", pct,
              (unsigned)(written / 1024), (unsigned)(total / 1024));

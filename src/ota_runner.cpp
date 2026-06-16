@@ -96,6 +96,10 @@ OtaResult ota_flash_app(const AppEntry &app, ota_progress_cb_t cb, void *ctx)
         written += n;
         if (cb)
             cb(written, total, ctx);
+
+        // Yield a rendszernek: a hosszú, blokkoló flashelés alatt fut az idle
+        // task is, így a watchdog nem dobja el (nagy, ~1MB+ image-nél fontos).
+        delay(1);
     }
 
     f.close();
