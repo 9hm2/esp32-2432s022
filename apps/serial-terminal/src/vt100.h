@@ -27,6 +27,9 @@ struct VtCell
 static constexpr int VT_MAX_COLS = 60;
 static constexpr int VT_MAX_ROWS = 40;
 
+// Visszagörgetési (scrollback) puffer sorainak száma.
+static constexpr int VT_SCROLLBACK = 120;
+
 class Vt100
 {
 public:
@@ -47,6 +50,14 @@ public:
     int curY() const { return _cy; }
     bool cursorVisible() const { return _cursorVisible; }
 
+    // Megjelenítendo cella a görgetési pozíciót (scrollback) figyelembe véve.
+    const VtCell &viewCell(int x, int vy) const;
+    int scroll() const { return _scroll; }            // 0 = élo (alul)
+    int scrollbackCount() const { return _sbCount; }
+    void setScroll(int s);                             // abszolút görgetés
+    void scrollBy(int lines);                          // relatív (>0 = vissza)
+    void scrollToBottom() { setScroll(0); }
+
     // 256-szín paletta -> RGB (LVGL szín).
     static lv_color_t palette(uint8_t idx);
     static lv_color_t defaultFg();
@@ -66,6 +77,12 @@ private:
     bool _bold = false, _inv = false;
 
     VtCell _cells[VT_MAX_COLS * VT_MAX_ROWS];
+
+    // Scrollback gyuru-puffer.
+    VtCell _sb[VT_SCROLLBACK * VT_MAX_COLS];
+    int _sbHead = 0, _sbCount = 0, _scroll = 0;
+    void pushScrollback(int row);
+    const VtCell *sbLine(int i) const;
 
     // Parser-állapot.
     enum class St

@@ -75,13 +75,56 @@ void Vt100::reset()
     _cx = _cy = 0;
     _top = 0;
     _bot = _rows - 1;
+    _sbHead = _sbCount = _scroll = 0;
     _dirty = true;
 }
+
+// --- Scrollback ------------------------------------------------------------
+
+const VtCell *Vt100::sbLine(int i) const
+{
+    return &_sb[((_sbHead + i) % VT_SCROLLBACK) * VT_MAX_COLS];
+}
+
+void Vt100::pushScrollback(int row)
+{
+    int slot = (_sbHead + _sbCount) % VT_SCROLLBACK;
+    memcpy(&_sb[slot * VT_MAX_COLS], &_cells[row * _cols], _cols * sizeof(VtCell));
+    if (_sbCount < VT_SCROLLBACK)
+        _sbCount++;
+    else
+        _sbHead = (_sbHead + 1) % VT_SCROLLBACK; // legrégebbi felülírása
+    if (_scroll > 0 && _scroll < _sbCount)
+        _scroll++; // a nézet a régi soroknál marad (scroll-lock)
+}
+
+const VtCell &Vt100::viewCell(int x, int vy) const
+{
+    int v = (_sbCount - _scroll) + vy;
+    if (v < _sbCount)
+        return sbLine(v)[x]; // scrollback
+    int sr = v - _sbCount;
+    if (sr < 0) sr = 0;
+    if (sr >= _rows) sr = _rows - 1;
+    return _cells[sr * _cols + x];
+}
+
+void Vt100::setScroll(int s)
+{
+    _scroll = constrain(s, 0, _sbCount);
+    _dirty = true;
+}
+
+void Vt100::scrollBy(int lines) { setScroll(_scroll + lines); }
 
 void Vt100::scrollUpRange(int top, int bot, int n)
 {
     if (n <= 0)
         return;
+    // A képernyo tetejérol kigördülo sorokat a scrollbackbe mentjük.
+    if (top == 0)
+        for (int k = 0; k < n && k <= bot; k++)
+            pushScrollback(k);
     for (int y = top; y + n <= bot; y++)
         copyRow(y, y + n);
     for (int y = bot - n + 1; y <= bot; y++)
@@ -158,8 +201,15 @@ void Vt100::feed(uint8_t b)
         return;
 
     case St::Esc:
-        if (b == '[') { _st = St::Csi; _nparams = 0; _priv = false;
-                        for (int i = 0; i < 8; i++) _params[i] = 0; return; }
+        if (b == '[')
+        {
+            _st = St::Csi;
+            _nparams = 0;
+            _priv = false;
+            for (int i = 0; i < 8; i++)
+                _params[i] = 0;
+            return;
+        }
         if (b == '(' || b == ')') { _st = St::Charset; return; }
         if (b == 'c') { reset(); _st = St::Normal; return; } // RIS
         if (b == 'D') { lineFeed(); _st = St::Normal; return; }            // IND

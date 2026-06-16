@@ -45,11 +45,15 @@ static void build_ui();
 static void update_status()
 {
     static const char *le_short[] = {"-", "LF", "CRLF", "CR"};
-    lv_label_set_text_fmt(status_lbl,
-                          LV_SYMBOL_USB "  RPi %lu 8N1 %s%s  %dx%d",
-                          (unsigned long)cfg.baud,
-                          le_short[cfg.lineEnding <= 3 ? cfg.lineEnding : 0],
-                          cfg.localEcho ? " echo" : "", vt.cols(), vt.rows());
+    if (vt.scroll() > 0)
+        lv_label_set_text_fmt(status_lbl, LV_SYMBOL_UP " SCROLL -%d/%d  (huzd le)",
+                              vt.scroll(), vt.scrollbackCount());
+    else
+        lv_label_set_text_fmt(status_lbl,
+                              LV_SYMBOL_USB " RPi %lu 8N1 %s%s %dx%d",
+                              (unsigned long)cfg.baud,
+                              le_short[cfg.lineEnding <= 3 ? cfg.lineEnding : 0],
+                              cfg.localEcho ? " echo" : "", vt.cols(), vt.rows());
 }
 
 // --- Terminál rajzolása (egyedi LVGL draw) ---------------------------------
@@ -71,18 +75,19 @@ static void term_draw_cb(lv_event_t *e)
     ld.font = &lv_font_unscii_8;
     ld.opa = LV_OPA_COVER;
 
+    const bool live = (vt.scroll() == 0);
     for (int y = 0; y < vt.rows(); y++)
     {
         for (int x = 0; x < vt.cols(); x++)
         {
-            const VtCell &c = vt.cell(x, y);
+            const VtCell &c = vt.viewCell(x, y); // scrollback-figyelo
             lv_color_t fg = (c.flags & VT_FG_DEF) ? Vt100::defaultFg()
                                                   : Vt100::palette(c.fg);
             lv_color_t bg = (c.flags & VT_BG_DEF) ? Vt100::defaultBg()
                                                   : Vt100::palette(c.bg);
             bool inv = (c.flags & VT_INVERSE) != 0;
-            if (vt.cursorVisible() && x == vt.curX() && y == vt.curY())
-                inv = !inv; // kurzor = invertált cella
+            if (live && vt.cursorVisible() && x == vt.curX() && y == vt.curY())
+                inv = !inv; // kurzor csak élo nézetben
 
             if (inv)
             {
@@ -138,6 +143,16 @@ static void send_line(const char *t)
         vt.feed('\r');
         vt.feed('\n');
     }
+    vt.scrollToBottom(); // válasz látható legyen
+}
+
+// Nyers byte-sorozat küldése (speciális billentyukhöz: nyilak, Ctrl-C, Esc...).
+static void send_raw(const char *seq)
+{
+    if (!seq)
+        return;
+    Serial.write((const uint8_t *)seq, strlen(seq));
+    vt.scrollToBottom();
 }
 
 // --- Képernyo-billentyuzet -------------------------------------------------
@@ -299,9 +314,103 @@ static void show_settings()
     lv_label_set_text(sl, "Mentes");
 }
 
+// --- Speciális billentyuk (nyers küldés a Pi-nek) --------------------------
+
+static lv_obj_t *keys_overlay = nullptr;
+
+static void rawkey_cb(lv_event_t *e)
+{
+    send_raw((const char *)lv_event_get_user_data(e));
+}
+
+static void close_keys()
+{
+    if (keys_overlay)
+    {
+        lv_obj_delete(keys_overlay);
+        keys_overlay = nullptr;
+    }
+}
+
+static void keys_close_cb(lv_event_t *) { close_keys(); }
+
+// Egy speciális gomb a panelre.
+static void add_key(lv_obj_t *parent, const char *label, const char *seq)
+{
+    lv_obj_t *b = lv_button_create(parent);
+    lv_obj_set_size(b, 50, 34);
+    lv_obj_add_event_cb(b, rawkey_cb, LV_EVENT_CLICKED, (void *)seq);
+    lv_obj_t *l = lv_label_create(b);
+    lv_label_set_text(l, label);
+    lv_obj_center(l);
+}
+
+static void show_keys()
+{
+    if (keys_overlay)
+        return;
+    const int32_t W = scrW();
+
+    keys_overlay = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(keys_overlay, W, 150);
+    lv_obj_align(keys_overlay, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_color(keys_overlay, lv_color_hex(0x1c2530), LV_PART_MAIN);
+    lv_obj_set_flex_flow(keys_overlay, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(keys_overlay, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(keys_overlay, 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_gap(keys_overlay, 4, LV_PART_MAIN);
+
+    add_key(keys_overlay, "Esc", "\x1b");
+    add_key(keys_overlay, "Tab", "\t");
+    add_key(keys_overlay, LV_SYMBOL_UP, "\x1b[A");
+    add_key(keys_overlay, "^C", "\x03");
+    add_key(keys_overlay, LV_SYMBOL_LEFT, "\x1b[D");
+    add_key(keys_overlay, LV_SYMBOL_DOWN, "\x1b[B");
+    add_key(keys_overlay, LV_SYMBOL_RIGHT, "\x1b[C");
+    add_key(keys_overlay, "^D", "\x04");
+    add_key(keys_overlay, "^Z", "\x1a");
+    add_key(keys_overlay, "Bksp", "\x7f");
+    add_key(keys_overlay, LV_SYMBOL_OK, "\r"); // Enter
+
+    lv_obj_t *cl = lv_button_create(keys_overlay);
+    lv_obj_set_size(cl, 50, 34);
+    lv_obj_add_event_cb(cl, keys_close_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *cll = lv_label_create(cl);
+    lv_label_set_text(cll, LV_SYMBOL_CLOSE);
+    lv_obj_center(cll);
+}
+
+// --- Húzás-görgetés (scrollback) -------------------------------------------
+
+static int s_dragY = 0, s_dragScroll = 0;
+
+static void term_press_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev)
+        return;
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+
+    if (lv_event_get_code(e) == LV_EVENT_PRESSED)
+    {
+        s_dragY = p.y;
+        s_dragScroll = vt.scroll();
+    }
+    else // PRESSING
+    {
+        int lines = (p.y - s_dragY) / CELL; // lefelé húzás -> régebbi sorok
+        vt.setScroll(s_dragScroll + lines);
+        update_status();
+        lv_obj_invalidate(term_obj);
+    }
+}
+
 // --- Eszköztár -------------------------------------------------------------
 
 static void btn_type_cb(lv_event_t *) { show_keyboard(); }
+static void btn_keys_cb(lv_event_t *) { show_keys(); }
 static void btn_cfg_cb(lv_event_t *) { show_settings(); }
 static void btn_clear_cb(lv_event_t *)
 {
@@ -352,7 +461,10 @@ static void build_ui()
     lv_obj_set_style_bg_color(term_obj, Vt100::defaultBg(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(term_obj, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_clear_flag(term_obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(term_obj, LV_OBJ_FLAG_CLICKABLE); // húzás-görgetéshez
     lv_obj_add_event_cb(term_obj, term_draw_cb, LV_EVENT_DRAW_MAIN_END, NULL);
+    lv_obj_add_event_cb(term_obj, term_press_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(term_obj, term_press_cb, LV_EVENT_PRESSING, NULL);
 
     vt.resize(termW / CELL, termH / CELL);
 
@@ -366,7 +478,8 @@ static void build_ui()
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(bar, 4, LV_PART_MAIN);
     lv_obj_set_style_pad_all(bar, 3, LV_PART_MAIN);
-    make_tool_btn(bar, LV_SYMBOL_KEYBOARD, btn_type_cb);
+    make_tool_btn(bar, LV_SYMBOL_KEYBOARD, btn_type_cb); // szöveg beírása
+    make_tool_btn(bar, "Fn", btn_keys_cb);               // speciális billentyuk
     make_tool_btn(bar, LV_SYMBOL_SETTINGS, btn_cfg_cb);
     make_tool_btn(bar, LV_SYMBOL_TRASH, btn_clear_cb);
     make_tool_btn(bar, LV_SYMBOL_LEFT, btn_exit_cb);

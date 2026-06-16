@@ -16,7 +16,12 @@ képernyo-billentyuzetrol parancsot küldhetsz, és a beállítások perzisztens
   - kurzor mentés/visszaállítás (`s`/`u`), kurzor láthatóság (`?25h/l`).
 - **Egyedi LVGL rajzolás** monospace **UNSCII 8×8** fonttal (elotér + háttér +
   inverz cellánként, blokk-kurzor).
-- **Képernyo-billentyuzet** a parancsok küldéséhez (⌨ gomb).
+- **Scrollback** (120 sor): **húzd le/fel a terminált** a régi sorok
+  megtekintéséhez (scroll-lock: a nézet a helyén marad új adat érkezésekor is).
+- **Képernyo-billentyuzet** (⌨) a parancsok küldéséhez (sorvégződéssel).
+- **Fn billentyu-panel** (Fn): nyers byte-ok közvetlenül a Pi-nek —
+  **Esc, Tab, Ctrl-C/D/Z, nyilak (↑↓←→), Backspace, Enter** (interaktív
+  programokhoz: `nano`, `vim`, `htop`, `top`, shell job control).
 - **Beállítások** (⚙): **baud** (9600–230400), **sorvég** (nincs/LF/CRLF/CR),
   **helyi echo**, **tájolás** (álló/fekvo) — NVS-be mentve.
 - **Törlés** (🗑) és **Vissza a launcherhez** (⟵).
@@ -61,8 +66,7 @@ RESET vagy a ⟵ gomb visszavisz a launcherbe.
 
 ## Korlátok
 
-- A rács **fix képernyo** (mint egy igazi VT100), külön **scrollback nincs** — a
-  felfelé görgetés a programok dolga (pl. `less`, `tmux`).
+- **Scrollback** 120 sor (efölött a legrégebbi sorok kiesnek).
 - Truecolor (`38;2`) a 256-szín palettára **közelítve** jelenik meg.
 - Néhány ritka szekvenciát (alternatív képernyo `?1049`, charset váltás) figyelmen
   kívül hagy; a tipikus konzol/`nano`/`htop`/`vim` kimenet helyesen jelenik meg.
