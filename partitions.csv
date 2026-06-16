@@ -1,9 +1,9 @@
 # Grafikus SD-bootloader partíciótábla — ESP32-2432S022C (4 MB flash)
-# Az app-partíciók (factory, ota_0) offsetje 0x10000-re igazítva.
-# factory = a launcher; ota_0 = az SD-ről flashelt és futtatott app.
+# Az elso app-partíció (factory) a HAGYOMÁNYOS 0x10000 offseten van — ez kell,
+# hogy a bootloader és a PlatformIO ugyanoda tegye az appot (különben boot loop).
+# factory = a launcher; ota_0 = az SD-rol flashelt és futtatott app.
 # Name,     Type, SubType,  Offset,    Size
 nvs,        data, nvs,      0x9000,    0x5000
 otadata,    data, ota,      0xe000,    0x2000
-phy_init,   data, phy,      0x10000,   0x1000
-factory,    app,  factory,  0x20000,   0x180000
-ota_0,      app,  ota_0,    0x1a0000,  0x250000
+factory,    app,  factory,  0x10000,   0x180000
+ota_0,      app,  ota_0,    0x190000,  0x250000

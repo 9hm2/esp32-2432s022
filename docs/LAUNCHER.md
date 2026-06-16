@@ -71,8 +71,7 @@ partíciótábla a gyökér `partitions.csv`.
 
 | Név | Típus | Offset | Méret | Szerep |
 |---|---|---|---|---|
-| nvs | data/nvs | 0x9000 | 20 KB | beállítások |
+| nvs | data/nvs | 0x9000 | 20 KB | beállítások / BLE bond |
 | otadata | data/ota | 0xe000 | 8 KB | OTA boot-állapot |
-| phy_init | data/phy | 0x10000 | 4 KB | RF kalibráció |
-| **factory** | app | 0x20000 | 1.5 MB | **launcher** |
-| **ota_0** | app | 0x1a0000 | ~2.3 MB | **futtatott app** |
+| **factory** | app | 0x10000 | 1.5 MB | **launcher** |
+| **ota_0** | app | 0x190000 | ~2.3 MB | **futtatott app** |
