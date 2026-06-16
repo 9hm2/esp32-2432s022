@@ -155,7 +155,7 @@ kerülhet, hogy a két dolog ne keveredjen.)
 | **M2** ✅ | GUI lista | LVGL görgethető lista a `.bin`-ekről, touch-kiválasztás | a képernyőn látszik és válaszható a lista — **kész** (fordul) |
 | **M3** ✅ | flash-and-boot | `.bin` SD→ota_0 másolás (`esp_ota_*`) + boot, progress + validáció | menüből indítható app — **kész** (fordul) |
 | **M4** | Teljes folyamat | GUI-ból indítás + progress + hibakezelés | tetszőleges (kompatibilis) app indítható menüből |
-| **M5** | Vissza a menübe | rollback élesítés, RESET → launcher | app után RESET visszahozza a menüt |
+| **M5** ✅ | Vissza a menübe | rollback (RESET) + kooperatív helper + app-sablon | RESET és „Vissza" gomb is visszahoz — **kész** (rollback alapból aktív az Arduino bootloaderben) |
 | **M6** | Csiszolás | ikonok, rendezés, manifest, beállítások, flash-cache | „termék" élmény |
 
 ## 11. Döntések (rögzítve) és még nyitott pontok

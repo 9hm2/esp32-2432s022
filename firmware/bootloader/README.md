@@ -5,16 +5,29 @@ Az ESP32-2432S022C-re készülő, érintőképernyős **app-indító**. SD-kárt
 
 A teljes tervet lásd: [`../../docs/BOOTLOADER_PLAN.md`](../../docs/BOOTLOADER_PLAN.md).
 
-## Állapot: M3 ✅
+## Állapot: M5 ✅
 
 | Mérföldkő | Tartalom | Állapot |
 |---|---|---|
 | **M1** | partíciótábla + SD mount + `.bin` listázás soros porton | ✅ kész |
 | **M2** | LVGL lista GUI (érintéssel) | ✅ kész |
-| **M3** | OTA flash-and-boot | ✅ kész (fordul) |
-| M4 | teljes folyamat GUI-val (megerősítés, csiszolás) | részben kész |
-| M5 | vissza a menübe (rollback + kooperatív) | hátravan |
-| M6 | csiszolás | hátravan |
+| **M3** | OTA flash-and-boot | ✅ kész |
+| **M5** | vissza a menübe (rollback + kooperatív) | ✅ kész |
+| M4/M6 | csiszolás (megerősítés, ikonok, rendezés, flash-cache) | hátravan |
+
+## Vissza a menübe (M5)
+
+Az arduino-esp32 előre-buildelt bootloaderében a **rollback alapból engedélyezve
+van** (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y`). A launcher az appot úgy
+flasheli, hogy **nem jelöli „valid"-nak**, így az app „pending verify" állapotban
+fut. Ezért:
+- **RESET** → a bootloader visszaesik a `factory`-ra (launcher), módosítatlan
+  appokkal is;
+- **kooperatív** módon az app a `return_to_launcher()` helperrel (lásd
+  [`../app-template/`](../app-template/)) azonnal visszaléphet egy gombról.
+
+> A saját, betölthető appokhoz használd az [app-sablont](../app-template/):
+> közös partíciótábla + `return_to_launcher()` helper.
 
 ## Mit csinál most (M3)
 

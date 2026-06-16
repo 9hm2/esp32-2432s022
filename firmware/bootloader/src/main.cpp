@@ -75,7 +75,8 @@ static void doFlashAndBoot()
     if (r == OTA_OK)
     {
         Serial.println("Flashelés OK -> ujraindulas az appba.");
-        launcher_ui_show_message("Kész", "Az app betoltve.\nUjraindulas...");
+        launcher_ui_show_message("Kész",
+                                 "Betoltve, indul az app.\nRESET = vissza ide.");
         lv_refr_now(NULL);
         ota_reboot(); // nem ter vissza
     }
