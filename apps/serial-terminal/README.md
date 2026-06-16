@@ -87,7 +87,13 @@ helyi képet).
 - **Parositas torlese**: az összes párosított eszköz törlése.
 
 > Biztonság: **bonding + MITM + Secure Connections**, *DisplayOnly* I/O — a kódot
-> a panel generálja és mutatja, a társeszköz írja be.
+> a panel generálja és mutatja, a társeszköz írja be. A bond kulcsai (ENC+ID)
+> mindkét irányba cserélodnek, így az **újracsatlakozás** is muködik.
+
+> ⚠️ Ha korábbi (hibás) build-del már párosítottál, a telefonon **felejtsd el az
+> eszközt** ("Forget"), a panelon pedig **Beállítások → Bluetooth → Clear
+> pairing**, majd párosíts újra — különben az elavult bond miatt nem fog
+> visszacsatlakozni.
 
 ## Karaktersűrűség (kis kijelzo)
 

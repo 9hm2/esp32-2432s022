@@ -78,6 +78,11 @@ void bt_init(const char *name)
     NimBLEDevice::init(name);
     NimBLEDevice::setSecurityAuth(true, true, true); // bonding, MITM, secure conn
     NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+    // Kulcsdisztribúció: az ENC (LTK) és ID (IRK) kulcsokat mindkét irányba
+    // kicseréljük — e nélkül a bond NEM tárolódik, és az újracsatlakozás (a már
+    // párosítottnak hitt eszközrol) meghiúsul / a kapcsolat bontásra kerül.
+    NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
+    NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
 
     NimBLEServer *srv = NimBLEDevice::createServer();
     srv->setCallbacks(&s_srvCb);
