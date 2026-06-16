@@ -746,6 +746,8 @@ static void bt_poll_ui()
 }
 
 static uint32_t last_tick = 0;
+static uint32_t last_draw = 0;
+static constexpr uint32_t REDRAW_MS = 40; // ~25 fps — a gyors kimenetet összevonja
 
 void loop()
 {
@@ -778,12 +780,16 @@ void loop()
     bt_poll_ui();
 
     pump_serial();
-    if (vt.dirty())
+
+    // Throttle: a bejövo adatot összevonjuk, és legfeljebb ~25 fps-sel rajzolunk
+    // újra. Így a gyors konzol-kimenet gördülékeny marad (nem rajzol minden byte-ra).
+    if (vt.dirty() && (now - last_draw) >= REDRAW_MS)
     {
         vt.clearDirty();
+        last_draw = now;
         lv_obj_invalidate(term_obj);
     }
 
     lv_timer_handler();
-    delay(5);
+    delay(2);
 }

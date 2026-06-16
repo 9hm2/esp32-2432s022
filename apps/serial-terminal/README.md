@@ -91,8 +91,8 @@ helyi képet).
 
 ## Karaktersűrűség (kis kijelzo)
 
-- A font egy **kis monospace** (DejaVu Sans Mono, 9 px, bpp4 antialias),
-  cellaméret **6×10 px** — keskenyebb az UNSCII 8×8-nál, így több oszlop fér ki.
+- A font egy **kis monospace** (DejaVu Sans Mono, 9 px, **bpp1** — gyors,
+  alfakeverés nélkül), cellaméret **6×10 px** — keskenyebb az UNSCII 8×8-nál.
   A fontot az `src/term_font.c` tartalmazza (generálva `lv_font_conv`-val).
 - **Álló módban ~39 oszlop × ~25 sor**, kis margóval (a szélso oszlop sem lóg le).
 - **Fekvo módban ~52 oszlop × ~21 sor**. A tájolás a **Beállítások** (⚙)
