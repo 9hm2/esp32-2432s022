@@ -19,12 +19,11 @@
 static TermConfig cfg;
 static Vt100 vt;
 
-// Kis monospace font (DejaVu Sans Mono, 8px, bpp1) — keskeny, sok fér ki.
-// Cella: 5 px széles x 10 px magas (= a font line_height-ja -> nincs sor-átfedés,
-// és a blokk-kurzor pontosan a sor-dobozra illeszkedik).
+// Kis monospace font (DejaVu Sans Mono, 8px, szoros sor) — keskeny, sok fér ki.
+// Cella: 5 px széles x 8 px magas (= a font line_height-ja a tömör igazításhoz).
 extern const lv_font_t term_font;
 static constexpr int CELL_W = 5;
-static constexpr int CELL_H = 10;
+static constexpr int CELL_H = 8;
 static constexpr int TOP_H = 22; // felso sáv (állapot + gombok)
 
 // --- UI elemek -------------------------------------------------------------
