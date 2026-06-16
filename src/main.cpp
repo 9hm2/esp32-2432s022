@@ -85,8 +85,13 @@ static void doFlashAndBoot()
     // Statikus üzenet (egyszer kirajzolva); flashelés alatt nincs több render.
     launcher_ui_progress_begin("Flashing app...\nplease wait, do not power off");
 
+    // Háttérvilágítás le flashelés idejére: csökkenti a csúcsáramot (brownout
+    // ellen), és kevesebb kijelzo-aktivitás a flash-írások mellett.
+    smartdisplay_lcd_set_backlight(0.0f);
+
     OtaResult r = ota_flash_app(pending_app, onFlashProgress, nullptr);
 
+    smartdisplay_lcd_set_backlight(0.6f); // vissza (hibánál látszódjon)
     launcher_ui_progress_end();
 
     if (r == OTA_OK)
