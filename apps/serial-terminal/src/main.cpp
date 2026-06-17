@@ -20,13 +20,14 @@
 static TermConfig cfg;
 static Vt100 vt;
 
-// Kis monospace font (DejaVu Sans Mono, 8px, bpp1, advance 5px-re fixálva).
-// Cella: 5 px széles x 10 px magas (= a font line_height-ja -> nincs sor-átfedés).
+// Kis monospace font (DejaVu Sans Mono, bpp1, advance 5px-re fixálva, +Unicode:
+// latin-1, box-rajz és blokk-elemek 0x2500-0x259F). Cella: 5 px széles x 11 px
+// magas (= a font line_height-ja -> nincs sor-átfedés).
 // A renderelés FUTAM-ALAPÚ: egy soron belül az azonos szín/attribútumú cellákat
 // EGY lv_draw_label-lel rajzoljuk (nem cellánként) -> sokkal kevesebb rajzfeladat.
 extern const lv_font_t term_font;
 static constexpr int CELL_W = 5;
-static constexpr int CELL_H = 10;
+static constexpr int CELL_H = 11;
 static constexpr int TOP_H = 22; // felso sáv (állapot + gombok)
 
 // --- UI elemek -------------------------------------------------------------
@@ -83,6 +84,27 @@ static void update_status()
 
 // --- Terminál rajzolása (egyedi LVGL draw) ---------------------------------
 
+// Egy BMP-kódpont UTF-8-ra kódolása a megadott bufferbe; visszaadja a byte-ok
+// számát (1..3). Az LVGL UTF-8 szöveget vár.
+static inline int utf8_encode(uint16_t cp, char *out)
+{
+    if (cp < 0x80)
+    {
+        out[0] = (char)cp;
+        return 1;
+    }
+    if (cp < 0x800)
+    {
+        out[0] = (char)(0xC0 | (cp >> 6));
+        out[1] = (char)(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    out[0] = (char)(0xE0 | (cp >> 12));
+    out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    out[2] = (char)(0x80 | (cp & 0x3F));
+    return 3;
+}
+
 static void term_draw_cb(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target_obj(e);
@@ -111,7 +133,8 @@ static void term_draw_cb(lv_event_t *e)
     ld.letter_space = 0;
 
     const bool live = (vt.scroll() == 0);
-    char run[VT_MAX_COLS + 1];
+    // UTF-8: cellánként legfeljebb 3 byte (BMP).
+    char run[VT_MAX_COLS * 3 + 1];
 
     for (int y = y0; y <= y1; y++)
     {
@@ -160,21 +183,24 @@ static void term_draw_cb(lv_event_t *e)
             }
 
             // A futam szövege egy label-lel; üres (csupa szóköz) futamot kihagyunk.
+            // A cellák Unicode-kódpontjait UTF-8-ra kódoljuk (LVGL UTF-8-at vár).
             bool hasInk = false;
+            int rb = 0;
             for (int i = 0; i < runLen; i++)
             {
-                uint8_t ch = vt.viewCell(x + i, y).ch;
-                run[i] = (ch >= 0x20 && ch < 0x7F) ? (char)ch : ' ';
-                if (run[i] != ' ') hasInk = true;
+                uint16_t cp = vt.viewCell(x + i, y).ch;
+                if (cp < 0x20) cp = 0x20; // vezérlokarakter sose kerül ide, de óvatosan
+                if (cp != 0x20) hasInk = true;
+                rb += utf8_encode(cp, run + rb);
             }
-            run[runLen] = '\0';
+            run[rb] = '\0';
 
             if (hasInk)
             {
                 ld.color = fg;
                 ld.text = run;
-                ld.text_length = runLen;
-                ld.text_local = 1; // az LVGL lemásolja a szöveget
+                ld.text_length = rb; // BYTE-szám (nem cellaszám)
+                ld.text_local = 1;   // az LVGL lemásolja a szöveget
                 lv_area_t la = {runX, cy, runX + runLen * CELL_W, cy + CELL_H - 1};
                 lv_draw_label(layer, &ld, &la);
             }

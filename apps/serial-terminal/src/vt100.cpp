@@ -157,25 +157,40 @@ void Vt100::lineFeed()
         _cy++;
 }
 
-// DEC vonalrajzoló karakterek -> ASCII közelítés (a font ASCII-only).
-static uint8_t decGfxToAscii(uint8_t ch)
+// DEC vonalrajzoló karakterek -> valódi Unicode kódpontok (a font tartalmazza
+// a box-rajz tartományt, 0x2500-0x257F).
+static uint16_t decGfxToCp(uint8_t ch)
 {
     switch (ch)
     {
-    case 'q': return '-';                          // vízszintes
-    case 'x': return '|';                          // függoleges
-    case 'l': case 'k': case 'm': case 'j':        // sarkok
-    case 'n': case 't': case 'u': case 'v': case 'w': case '+': return '+';
-    case '`': case 'a': return '#';                // diamond / checkerboard
-    case '~': return '.';                          // középpont
+    case 'j': return 0x2518; // ┘
+    case 'k': return 0x2510; // ┐
+    case 'l': return 0x250C; // ┌
+    case 'm': return 0x2514; // └
+    case 'n': return 0x253C; // ┼
+    case 'q': return 0x2500; // ─
+    case 't': return 0x251C; // ├
+    case 'u': return 0x2524; // ┤
+    case 'v': return 0x2534; // ┴
+    case 'w': return 0x252C; // ┬
+    case 'x': return 0x2502; // │
+    case 'a': return 0x2592; // ▒ (checkerboard)
+    case '0': return 0x2588; // █ (solid block)
+    case 'f': return 0x00B0; // °
+    case 'g': return 0x00B1; // ±
+    case '~': return 0x00B7; // ·
+    case '`': return '+';    // ◆ (nincs a fontban) -> +
     default:  return ch;
     }
 }
 
-void Vt100::putChar(uint8_t ch)
+void Vt100::putCp(uint16_t cp)
 {
-    if (_g0gfx && ch >= 0x60 && ch <= 0x7E)
-        ch = decGfxToAscii(ch);
+    // Csak a fontban meglévo tartományok; egyébként '?' (hogy a glyph-szélesség
+    // — és így a monospace rács — sose csússzon el hiányzó glyph miatt).
+    if (!((cp >= 0x20 && cp <= 0x7E) || (cp >= 0xA0 && cp <= 0xFF) ||
+          (cp >= 0x2500 && cp <= 0x259F)))
+        cp = '?';
 
     if (_cx >= _cols)
     {
@@ -183,7 +198,7 @@ void Vt100::putChar(uint8_t ch)
         lineFeed();
     }
     VtCell &c = _cells[_cy * _cols + _cx];
-    c.ch = ch;
+    c.ch = cp;
     c.fg = _fg;
     c.bg = _bg;
     c.flags = (_bold ? VT_BOLD : 0) | (_inv ? VT_INVERSE : 0) |
@@ -213,13 +228,42 @@ void Vt100::feed(uint8_t b)
     switch (_st)
     {
     case St::Normal:
-        if (b == 0x1B) { _st = St::Esc; return; }
-        if (b == '\n') { lineFeed(); _dirty = true; return; }
-        if (b == '\r') { _cx = 0; _dirty = true; return; }
-        if (b == '\b') { if (_cx > 0) _cx--; _dirty = true; return; }
-        if (b == '\t') { _cx = (_cx + 8) & ~7; if (_cx >= _cols) _cx = _cols - 1; return; }
-        if (b == 0x07) return; // BEL
-        if (b >= 0x20 && b < 0x7F) putChar(b);
+        // ESC vagy bármely vezérlokarakter megszakítja a folyamatban lévo UTF-8
+        // szekvenciát (nem érvényes folytatóbyte).
+        if (b == 0x1B) { _u8rem = 0; _st = St::Esc; return; }
+        if (b == '\n') { _u8rem = 0; lineFeed(); _dirty = true; return; }
+        if (b == '\r') { _u8rem = 0; _cx = 0; _dirty = true; return; }
+        if (b == '\b') { _u8rem = 0; if (_cx > 0) _cx--; _dirty = true; return; }
+        if (b == '\t') { _u8rem = 0; _cx = (_cx + 8) & ~7; if (_cx >= _cols) _cx = _cols - 1; return; }
+        if (b == 0x07) { _u8rem = 0; return; } // BEL
+
+        // UTF-8 folytatóbyte (10xxxxxx).
+        if ((b & 0xC0) == 0x80)
+        {
+            if (_u8rem > 0)
+            {
+                _u8cp = (_u8cp << 6) | (b & 0x3F);
+                if (--_u8rem == 0)
+                    putCp(_u8cp > 0xFFFF ? '?' : (uint16_t)_u8cp);
+            }
+            // különben magányos folytatóbyte: eldobjuk
+            return;
+        }
+
+        // Új szekvencia kezdete -> a függoben lévot eldobjuk.
+        _u8rem = 0;
+
+        if (b < 0x80) // ASCII
+        {
+            if (b >= 0x20)
+                putCp(_g0gfx ? decGfxToCp(b) : b);
+            return;
+        }
+        // Több-byte-os UTF-8 indítóbyte.
+        if ((b & 0xE0) == 0xC0) { _u8cp = b & 0x1F; _u8rem = 1; }
+        else if ((b & 0xF0) == 0xE0) { _u8cp = b & 0x0F; _u8rem = 2; }
+        else if ((b & 0xF8) == 0xF0) { _u8cp = b & 0x07; _u8rem = 3; }
+        // egyébként érvénytelen indítóbyte: eldobjuk
         return;
 
     case St::Esc:

@@ -16,11 +16,15 @@ képernyo-billentyuzetrol parancsot küldhetsz, és a beállítások perzisztens
   - kurzor mentés/visszaállítás (`s`/`u`, `ESC 7`/`ESC 8`), láthatóság (`?25h/l`),
   - **alternatív képernyo** (`?1049`/`?47`/`?1047`) — `vim`/`nano`/`htop`/`less`
     teljes képernyos appokhoz (kilépéskor tiszta képernyo, a scrollback érintetlen),
-  - **DEC vonalrajzoló karakterkészlet** (`ESC(0`) ASCII-közelítéssel (keretek),
+  - **UTF-8 bevitel** (több-byte-os szekvenciák dekódolása) + **valódi
+    Unicode box-rajz/blokk-elemek** (`U+2500–U+259F`): keretek, vonalak,
+    árnyékolt blokkok — a `mc`, `htop`, `dialog`, `ncurses` rajzok élesek,
+  - **DEC vonalrajzoló karakterkészlet** (`ESC(0`) valódi box-rajz kódpontokra
+    leképezve (nem ASCII-közelítés),
   - **DSR/DA válaszok** (`ESC[6n`, `ESC[5n`, `ESC[c`) — a lekérdezo appoknak.
 - **Egyedi LVGL rajzolás** kis monospace fonttal (elotér + háttér + inverz
   cellánként, blokk-kurzor).
-- **Scrollback** (60 sor): **húzd le/fel a terminált** a régi sorok
+- **Scrollback** (32 sor): **húzd le/fel a terminált** a régi sorok
   megtekintéséhez (scroll-lock: a nézet a helyén marad új adat érkezésekor is).
 - **Wi-Fi telnet bevitel:** az ESP a megadott hálózathoz csatlakozik (STA), és
   egy **telnet szervert** (port 23) nyit. A telefonod/géped a **teljes
@@ -78,16 +82,19 @@ RESET vagy a ⟵ gomb visszavisz a launcherbe.
 
 ## Karaktersűrűség (kis kijelzo)
 
-- A font egy **kis monospace** (DejaVu Sans Mono, 8 px, **bpp1**, szoros sor),
-  cellaméret **5×8 px** — sok karakter fér ki. A fontot az `src/term_font.c`
-  tartalmazza (generálva `lv_font_conv`-val).
+- A font egy **kis monospace** (DejaVu Sans Mono, **bpp1**, szoros sor),
+  cellaméret **5×11 px** — sok karakter fér ki. A fontot az `src/term_font.c`
+  tartalmazza (generálva `lv_font_conv`-val), tartományok: `0x20–0x7E`,
+  `0xA0–0xFF` (latin-1) és `0x2500–0x259F` (box-rajz + blokk-elemek).
 - **Álló módban ~46 oszlop**, **fekvo módban ~62 oszlop**. A tájolás a
   **Beállítások** (⚙) menüben váltható, NVS-be mentve.
 
 ## Korlátok
 
-- **Scrollback** 80 sor (efölött a legrégebbi sorok kiesnek).
+- **Scrollback** 32 sor (efölött a legrégebbi sorok kiesnek) — a Wi-Fi stack és a
+  Unicode-cella (6 bájt) RAM-igénye miatt.
 - Truecolor (`38;2`) a 256-szín palettára **közelítve** jelenik meg.
-- Néhány ritka szekvenciát (alternatív képernyo `?1049`, charset váltás) figyelmen
-  kívül hagy; a tipikus konzol/`nano`/`htop`/`vim` kimenet helyesen jelenik meg.
+- A fontban a **BMP** alábbi tartományai vannak meg: ASCII, latin-1
+  (`0xA0–0xFF`), box-rajz/blokk (`0x2500–0x259F`). Az ezeken kívüli kódpontok
+  helyén `?` jelenik meg (a monospace rács sose csúszik el hiányzó glyph miatt).
 - Max rács 64×40 cella.

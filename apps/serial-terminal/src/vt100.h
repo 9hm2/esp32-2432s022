@@ -17,7 +17,7 @@ enum
 
 struct VtCell
 {
-    uint8_t ch;    // ASCII karakter (' ' az üres)
+    uint16_t ch;   // Unicode kódpont (0x20 = üres); BMP-ig (box-rajz, blokkok)
     uint8_t fg;    // 256-szín paletta index (ha nem VT_FG_DEF)
     uint8_t bg;    // 256-szín paletta index (ha nem VT_BG_DEF)
     uint8_t flags; // VT_* bitek
@@ -28,8 +28,9 @@ static constexpr int VT_MAX_COLS = 64;
 static constexpr int VT_MAX_ROWS = 40;
 
 // Visszagörgetési (scrollback) puffer sorainak száma.
-// (A Wi-Fi stack statikus RAM-igénye miatt mértékkel — 60 sor jó kompromisszum.)
-static constexpr int VT_SCROLLBACK = 60;
+// (A Wi-Fi stack statikus RAM-igénye + a 6 bájtos VtCell — Unicode kódpont —
+// miatt mértékkel: 32 sor fér bele a DRAM-ba.)
+static constexpr int VT_SCROLLBACK = 32;
 
 class Vt100
 {
@@ -118,10 +119,14 @@ private:
     int _nparams = 0;
     bool _priv = false; // CSI '?'
 
+    // UTF-8 dekóder állapota (több-byte-os szekvenciák összerakása).
+    uint32_t _u8cp = 0;
+    int _u8rem = 0;
+
     VtCell blank() const;
     void clearRow(int y);
     void copyRow(int dst, int src);
-    void putChar(uint8_t ch);
+    void putCp(uint16_t cp);
     void lineFeed();
     void scrollUpRange(int top, int bot, int n);
     void scrollDownRange(int top, int bot, int n);
