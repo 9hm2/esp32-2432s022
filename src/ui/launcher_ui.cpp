@@ -195,7 +195,8 @@ void launcher_ui_progress_update(uint8_t pct, const char *text)
         pct = 100;
     lv_bar_set_value(s_prog_bar, pct, LV_ANIM_OFF);
     lv_label_set_text(s_prog_label, text);
-    lv_refr_now(NULL); // azonnali rajzolás, mert a flashelés blokkol
+    // NINCS lv_refr_now: a renderelést a fo loop lv_timer_handler-e végzi, így a
+    // kijelzo-flush sosem keveredik a flash-írásokkal (az okozta a befagyást).
 }
 
 void launcher_ui_progress_end()

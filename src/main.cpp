@@ -65,9 +65,14 @@ static void onAppSelected(const AppEntry &app)
     flash_requested = true;
 }
 
-// OTA folyamat -> folyamatjelzo frissítése (csak ha változott a százalék).
-static void onFlashProgress(uint32_t written, uint32_t total, void *)
+// Lépésenkénti flashelés állapota.
+static bool flashing = false;
+
+// A folyamatjelzo sávjának frissítése (csak %-változáskor); a tényleges
+// renderelést a fo loop lv_timer_handler-e végzi.
+static void updateFlashBar()
 {
+    uint32_t total = ota_total(), written = ota_written();
     uint8_t pct = total ? (uint8_t)(((uint64_t)written * 100) / total) : 0;
     static int lastPct = -1;
     if ((int)pct == lastPct)
@@ -79,28 +84,16 @@ static void onFlashProgress(uint32_t written, uint32_t total, void *)
     launcher_ui_progress_update(pct, buf);
 }
 
-// A kért app beírása az ota_0-ba és átindítás rá (a loop()-ból hívva).
-static void doFlashAndBoot()
+// A flashelést a loop() hajtja lépésenként (lásd lent), hogy a kijelzo
+// frissülhessen, és a render sose keveredjen a flash-írásokkal.
+static void flashErrorUI(OtaResult r)
 {
-    Serial.printf("Flashing: %s ...\n", pending_app.path.c_str());
-    launcher_ui_progress_begin("Flashing app...");
-
-    OtaResult r = ota_flash_app(pending_app, onFlashProgress, nullptr);
-
+    Serial.printf("Flash ERROR: %s\n", ota_result_str(r));
+    flashing = false;
     launcher_ui_progress_end();
-
-    if (r == OTA_OK)
-    {
-        Serial.println("Flash OK -> rebooting into app.");
-        ota_reboot(); // does not return
-    }
-    else
-    {
-        Serial.printf("Flash ERROR: %s\n", ota_result_str(r));
-        char m[128];
-        snprintf(m, sizeof(m), "Failed:\n%s", ota_result_str(r));
-        launcher_ui_show_message("Failed", m);
-    }
+    char m[128];
+    snprintf(m, sizeof(m), "Failed:\n%s", ota_result_str(r));
+    launcher_ui_show_message("Failed", m);
 }
 
 // Az SD aktuális állapota (hotplug).
@@ -164,21 +157,44 @@ void loop()
         last_tick = now;
     lv_tick_inc(now - last_tick);
     last_tick = now;
-    lv_timer_handler();
+    lv_timer_handler(); // itt rajzol az LVGL (a folyamatjelzo is)
 
-    // SD hotplug-poll ~600 ms-onként (de nem flashelés közben).
-    if (!flash_requested && now - last_sd_check > 600)
+    // SD hotplug-poll ~600 ms-onként (de nem flashelés közben/elott).
+    if (!flash_requested && !flashing && now - last_sd_check > 600)
     {
         last_sd_check = now;
         pollSd();
     }
 
-    // A flashelést a fo ciklusban végezzük (nem az esemenykezelőben).
-    if (flash_requested)
+    // App kiválasztva -> flashelés indítása (lépésenként).
+    if (flash_requested && !flashing)
     {
         flash_requested = false;
-        doFlashAndBoot();
+        Serial.printf("Flashing: %s ...\n", pending_app.path.c_str());
+        OtaResult r = ota_begin(pending_app);
+        if (r != OTA_OK)
+            flashErrorUI(r);
+        else
+        {
+            flashing = true;
+            launcher_ui_progress_begin("Flashing app...");
+        }
     }
 
-    delay(5);
+    // Lépésenkénti flashelés: egy adag (a render a loop elején történik, így a
+    // kijelzo-flush sose esik egybe a flash-írásokkal).
+    if (flashing)
+    {
+        OtaResult r = ota_step(48 * 1024); // ~48 KB / iteráció
+        updateFlashBar();
+        if (r == OTA_OK)
+        {
+            Serial.println("Flash OK -> rebooting into app.");
+            ota_reboot(); // nem ter vissza
+        }
+        else if (r != OTA_BUSY)
+            flashErrorUI(r);
+    }
+
+    delay(flashing ? 1 : 5);
 }

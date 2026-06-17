@@ -9,6 +9,7 @@
 enum OtaResult
 {
     OTA_OK = 0,
+    OTA_BUSY,         // még van hátra (lépésenkénti flashelés)
     OTA_ERR_OPEN,     // a fájl nem nyitható meg
     OTA_ERR_EMPTY,    // üres fájl
     OTA_ERR_MAGIC,    // nem ESP app-image (első byte != 0xE9)
@@ -24,12 +25,16 @@ enum OtaResult
 // Ember által olvasható hibaszöveg.
 const char *ota_result_str(OtaResult r);
 
-// Folyamat-visszahívás (written/total byte). 'ctx' tetszőleges felhasználói adat.
-typedef void (*ota_progress_cb_t)(uint32_t written, uint32_t total, void *ctx);
-
-// A megadott app-image beírása az ota_0 partícióba és boot-partíciónak állítása.
-// NEM indít újra (azt a hívó dönti el). OTA_OK esetén kész a boot.
-OtaResult ota_flash_app(const AppEntry &app, ota_progress_cb_t cb, void *ctx);
+// Lépésenkénti flashelés (a loop()-ból hajtva), hogy a kijelzo közben
+// frissülhessen (a renderelés NEM keveredhet a flash-írásokkal).
+//   ota_begin(): megnyit + validál + esp_ota_begin. OTA_OK = sikeres indítás.
+//   ota_step(): legfeljebb maxBytes-ot ír; OTA_BUSY = van hátra, OTA_OK = kész
+//               (esp_ota_end + boot-partíció beállítva), egyéb = hiba.
+OtaResult ota_begin(const AppEntry &app);
+OtaResult ota_step(uint32_t maxBytes);
+uint32_t ota_written();
+uint32_t ota_total();
 
 // Újraindítás (a beállított boot-partícióra).
 void ota_reboot();
+
