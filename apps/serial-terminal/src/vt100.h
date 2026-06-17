@@ -41,6 +41,9 @@ public:
     void feed(uint8_t b);
     void feedStr(const char *s);
 
+    // A host felé küldendo válasz (DSR/DA). A fo loop olvassa ki és továbbítja.
+    int readReply(uint8_t *out, int maxlen);
+
     bool dirty() const { return _dirty; }
     void clearDirty() { _dirty = false; }
 
@@ -76,6 +79,24 @@ private:
     uint8_t _fg = 0, _bg = 0;
     bool _fgDef = true, _bgDef = true;
     bool _bold = false, _inv = false;
+
+    bool _altActive = false; // alternatív képernyo (?1049/?47/?1047)
+    bool _g0gfx = false;     // G0 = DEC vonalrajzoló karakterkészlet (ESC ( 0)
+    bool _pendG0 = true;     // a most beérkezo ESC( / ESC) G0-ra vonatkozik-e
+
+    // Mentett kurzor + attribútumok (DECSC/DECRC, ?1049).
+    int _savCx = 0, _savCy = 0;
+    uint8_t _savFg = 0, _savBg = 0;
+    bool _savFgDef = true, _savBgDef = true, _savBold = false, _savInv = false, _savG0 = false;
+    void saveCursor();
+    void restoreCursor();
+    void enterAlt();
+    void leaveAlt();
+
+    // Host felé küldendo válasz (DSR/DA).
+    char _reply[24];
+    int _replyLen = 0;
+    void reply(const char *s);
 
     VtCell _cells[VT_MAX_COLS * VT_MAX_ROWS];
 

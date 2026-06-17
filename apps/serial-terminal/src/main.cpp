@@ -122,7 +122,11 @@ static void term_draw_cb(lv_event_t *e)
             // A cella effektív szín-állapota (inverz/kurzor figyelembevételével).
             auto cellColors = [&](int cx, lv_color_t &fg, lv_color_t &bg) {
                 const VtCell &c = vt.viewCell(cx, y);
-                fg = (c.flags & VT_FG_DEF) ? Vt100::defaultFg() : Vt100::palette(c.fg);
+                // Félkövér: a 0-7 alap-szín helyett a világos (8-15) változat.
+                uint8_t fgi = c.fg;
+                if ((c.flags & VT_BOLD) && !(c.flags & VT_FG_DEF) && fgi < 8)
+                    fgi += 8;
+                fg = (c.flags & VT_FG_DEF) ? Vt100::defaultFg() : Vt100::palette(fgi);
                 bg = (c.flags & VT_BG_DEF) ? Vt100::defaultBg() : Vt100::palette(c.bg);
                 bool inv = (c.flags & VT_INVERSE) != 0;
                 if (live && vt.cursorVisible() && cx == vt.curX() && y == vt.curY())
@@ -692,6 +696,12 @@ void loop()
     }
 
     pump_serial();
+
+    // A terminál válasza (DSR/DA lekérdezésekre) vissza a Pi-nek.
+    uint8_t rep[24];
+    int rn = vt.readReply(rep, sizeof(rep));
+    if (rn > 0)
+        Serial.write(rep, rn);
 
     // Throttle: a bejövo adatot összevonjuk, és legfeljebb ~25 fps-sel rajzolunk
     // újra. Így a gyors konzol-kimenet gördülékeny marad (nem rajzol minden byte-ra).

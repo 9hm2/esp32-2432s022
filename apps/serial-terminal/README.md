@@ -12,8 +12,12 @@ képernyo-billentyuzetrol parancsot küldhetsz, és a beállítások perzisztens
   - törlés (ED `J`, EL `K`), sor/karakter beszúrás-törlés (`L M P @ X`),
   - görgetés és **görgetési régió** (DECSTBM `r`, `S`/`T`),
   - **SGR színek/attribútumok**: 16 alap-, **256-szín** (`38;5;n`/`48;5;n`),
-    truecolor közelítés (`38;2;r;g;b`), **félkövér**, **inverz**, alaphelyzet,
-  - kurzor mentés/visszaállítás (`s`/`u`), kurzor láthatóság (`?25h/l`).
+    truecolor közelítés (`38;2;r;g;b`), **félkövér** (világos színként), **inverz**,
+  - kurzor mentés/visszaállítás (`s`/`u`, `ESC 7`/`ESC 8`), láthatóság (`?25h/l`),
+  - **alternatív képernyo** (`?1049`/`?47`/`?1047`) — `vim`/`nano`/`htop`/`less`
+    teljes képernyos appokhoz (kilépéskor tiszta képernyo, a scrollback érintetlen),
+  - **DEC vonalrajzoló karakterkészlet** (`ESC(0`) ASCII-közelítéssel (keretek),
+  - **DSR/DA válaszok** (`ESC[6n`, `ESC[5n`, `ESC[c`) — a lekérdezo appoknak.
 - **Egyedi LVGL rajzolás** kis monospace fonttal (elotér + háttér + inverz
   cellánként, blokk-kurzor).
 - **Scrollback** (60 sor): **húzd le/fel a terminált** a régi sorok

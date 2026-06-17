@@ -76,6 +76,9 @@ void Vt100::reset()
     _top = 0;
     _bot = _rows - 1;
     _sbHead = _sbCount = _scroll = 0;
+    _altActive = false;
+    _g0gfx = false;
+    _replyLen = 0;
     _dirty = true;
 }
 
@@ -121,8 +124,9 @@ void Vt100::scrollUpRange(int top, int bot, int n)
 {
     if (n <= 0)
         return;
-    // A képernyo tetejérol kigördülo sorokat a scrollbackbe mentjük.
-    if (top == 0)
+    // A képernyo tetejérol kigördülo sorokat a scrollbackbe mentjük
+    // (alternatív képernyon — vim/htop — NEM, hogy ne szemetelje tele).
+    if (top == 0 && !_altActive)
         for (int k = 0; k < n && k <= bot; k++)
             pushScrollback(k);
     for (int y = top; y + n <= bot; y++)
@@ -153,8 +157,26 @@ void Vt100::lineFeed()
         _cy++;
 }
 
+// DEC vonalrajzoló karakterek -> ASCII közelítés (a font ASCII-only).
+static uint8_t decGfxToAscii(uint8_t ch)
+{
+    switch (ch)
+    {
+    case 'q': return '-';                          // vízszintes
+    case 'x': return '|';                          // függoleges
+    case 'l': case 'k': case 'm': case 'j':        // sarkok
+    case 'n': case 't': case 'u': case 'v': case 'w': case '+': return '+';
+    case '`': case 'a': return '#';                // diamond / checkerboard
+    case '~': return '.';                          // középpont
+    default:  return ch;
+    }
+}
+
 void Vt100::putChar(uint8_t ch)
 {
+    if (_g0gfx && ch >= 0x60 && ch <= 0x7E)
+        ch = decGfxToAscii(ch);
+
     if (_cx >= _cols)
     {
         _cx = 0;
@@ -210,8 +232,11 @@ void Vt100::feed(uint8_t b)
                 _params[i] = 0;
             return;
         }
-        if (b == '(' || b == ')') { _st = St::Charset; return; }
+        if (b == '(') { _pendG0 = true; _st = St::Charset; return; }
+        if (b == ')') { _pendG0 = false; _st = St::Charset; return; }
         if (b == 'c') { reset(); _st = St::Normal; return; } // RIS
+        if (b == '7') { saveCursor(); _st = St::Normal; return; }           // DECSC
+        if (b == '8') { restoreCursor(); _st = St::Normal; return; }        // DECRC
         if (b == 'D') { lineFeed(); _st = St::Normal; return; }            // IND
         if (b == 'M') { if (_cy <= _top) scrollDownRange(_top, _bot, 1); else _cy--;
                         _st = St::Normal; return; }                          // RI
@@ -220,7 +245,10 @@ void Vt100::feed(uint8_t b)
         return;
 
     case St::Charset:
-        _st = St::Normal; // a karakterkészlet-jelölést eldobjuk
+        // ESC ( / ) <charset>: a G0 esetén figyeljük a DEC vonalrajzolót ('0').
+        if (_pendG0)
+            _g0gfx = (b == '0');
+        _st = St::Normal;
         return;
 
     case St::Csi:
@@ -365,9 +393,99 @@ void Vt100::csiDispatch(uint8_t f)
     case 'u': _cx = _sx; _cy = _sy; break;
     case 'h':
     case 'l':
-        if (_priv && param(0, 0) == 25) _cursorVisible = (f == 'h');
+    {
+        bool set = (f == 'h');
+        if (_priv)
+        {
+            int m = param(0, 0);
+            if (m == 25) _cursorVisible = set;            // kurzor láthatóság
+            else if (m == 1049 || m == 47 || m == 1047)   // alternatív képernyo
+            {
+                if (set) enterAlt();
+                else leaveAlt();
+            }
+        }
+        break;
+    }
+    case 'n': // DSR — eszközállapot lekérdezés
+        if (!_priv)
+        {
+            int m = param(0, 0);
+            if (m == 5) reply("\x1b[0n"); // OK
+            else if (m == 6)              // kurzorpozíció: ESC[row;colR
+            {
+                char b[32];
+                snprintf(b, sizeof(b), "\x1b[%d;%dR", _cy + 1, _cx + 1);
+                reply(b);
+            }
+        }
+        break;
+    case 'c': // DA — eszközazonosító (VT102-ként válaszolunk)
+        reply("\x1b[?6c");
         break;
     default: break;
     }
     _dirty = true;
+}
+
+// --- Mentett kurzor / alternatív képernyo / válasz ------------------------
+
+void Vt100::saveCursor()
+{
+    _savCx = _cx; _savCy = _cy;
+    _savFg = _fg; _savBg = _bg;
+    _savFgDef = _fgDef; _savBgDef = _bgDef;
+    _savBold = _bold; _savInv = _inv; _savG0 = _g0gfx;
+}
+
+void Vt100::restoreCursor()
+{
+    _cx = constrain(_savCx, 0, _cols - 1);
+    _cy = constrain(_savCy, 0, _rows - 1);
+    _fg = _savFg; _bg = _savBg;
+    _fgDef = _savFgDef; _bgDef = _savBgDef;
+    _bold = _savBold; _inv = _savInv; _g0gfx = _savG0;
+}
+
+void Vt100::enterAlt()
+{
+    if (_altActive)
+        return;
+    saveCursor();
+    _altActive = true;
+    // Könnyu változat: a fo tartalmat nem mentjük (RAM), de töröljük a képernyot
+    // és nem szemeteljük a scrollbacket — a teljes képernyos app újrarajzol.
+    for (int y = 0; y < _rows; y++)
+        clearRow(y);
+    _cx = _cy = 0;
+    _dirty = true;
+}
+
+void Vt100::leaveAlt()
+{
+    if (!_altActive)
+        return;
+    _altActive = false;
+    for (int y = 0; y < _rows; y++)
+        clearRow(y);
+    restoreCursor();
+    _dirty = true;
+}
+
+void Vt100::reply(const char *s)
+{
+    while (*s && _replyLen < (int)sizeof(_reply))
+        _reply[_replyLen++] = *s++;
+}
+
+int Vt100::readReply(uint8_t *out, int max)
+{
+    int n = (_replyLen < max) ? _replyLen : max;
+    for (int i = 0; i < n; i++)
+        out[i] = (uint8_t)_reply[i];
+    // a maradékot elotoljuk (általában 0)
+    for (int i = n; i < _replyLen; i++)
+        _reply[i - n] = _reply[i];
+    _replyLen -= n;
+    return n;
 }
